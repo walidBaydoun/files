@@ -209,8 +209,7 @@ class ArenaServer:
     def try_start_game(self):
         """Start a game if exactly 2 lobby players are waiting and no game running."""
         if self.game_state and self.game_state.running:
-            return
-        with self._lock:
+            return        with self._lock:
             lobby = [c for c in self._clients if c.username and c.role == "lobby"]
         if len(lobby) >= 2:
             p0, p1 = lobby[0], lobby[1]
@@ -251,13 +250,16 @@ class ArenaServer:
         self.broadcast(over_msg)
         print(f"[server] Game over. Winner: {gs.winner}")
 
-        # Reset roles
+        # Reset roles for players AND fans so everyone returns to lobby
         with self._lock:
             for c in self._clients:
-                if c.role == "player":
+                if c.role in ("player", "fan"):
                     c.role = "lobby"
                     c.player_id = None
         self.broadcast_player_list()
+        # Try to start a new game for anyone waiting in lobby
+        time.sleep(1)
+        self.try_start_game()
 
     def handle_rematch(self, client: ClientHandler):
         if client.username:
@@ -291,3 +293,4 @@ if __name__ == "__main__":
         sys.exit(1)
     port = int(sys.argv[1])
     ArenaServer(port).start()
+    
