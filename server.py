@@ -209,7 +209,8 @@ class ArenaServer:
     def try_start_game(self):
         """Start a game if exactly 2 lobby players are waiting and no game running."""
         if self.game_state and self.game_state.running:
-            return        with self._lock:
+            return        
+        with self._lock:
             lobby = [c for c in self._clients if c.username and c.role == "lobby"]
         if len(lobby) >= 2:
             p0, p1 = lobby[0], lobby[1]
