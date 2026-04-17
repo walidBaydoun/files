@@ -252,8 +252,9 @@ class PithonArenaClient:
         self._active_inputs = [self.ui_host, self.ui_port, self.ui_uname]
 
     def _init_lobby_ui(self):
-        self.fan_btn    = pygame.Rect(WIN_W - SIDEBAR + 20, WIN_H - 100, SIDEBAR - 40, 36)
-        self.rematch_btn = pygame.Rect(WIN_W // 2 - 100, WIN_H // 2 + 80, 200, 44)
+        self.fan_btn     = pygame.Rect(WIN_W - SIDEBAR + 20, WIN_H - 100, SIDEBAR - 40, 36)
+        self.rematch_btn = pygame.Rect(WIN_W // 2 - SIDEBAR // 2 - 110, WIN_H // 2 + 80, 200, 44)
+        self.lobby_btn   = pygame.Rect(WIN_W // 2 - SIDEBAR // 2 + 110, WIN_H // 2 + 80, 200, 44)
 
     def _init_game_ui(self):
         sx = GRID_W * CELL + 10
@@ -294,6 +295,9 @@ class PithonArenaClient:
 
         elif t == MSG_PLAYER_LIST:
             self.online_list = msg.get("players", [])
+            # If server put us back in lobby (e.g. after leaving), switch screen
+            if self.state == S_GAME_OVER and self.username in self.online_list:
+                self._go_to_lobby()
 
         elif t == MSG_GAME_START:
             self.player_id = msg.get("your_id")
@@ -407,8 +411,18 @@ class PithonArenaClient:
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.rematch_btn.collidepoint(event.pos) and self.net:
                 self.net.send({"type": MSG_REMATCH})
+            if self.lobby_btn.collidepoint(event.pos) and self.net:
+                self.net.send({"type": MSG_LEAVE})
+                self._go_to_lobby()
 
     # ── Networking ─────────────────────────────────────────────────────────────
+    def _go_to_lobby(self):
+        self.state     = S_LOBBY
+        self.game_data = None
+        self.game_over = None
+        self.player_id = None
+        self.is_fan    = False
+
     def _do_connect(self):
         host  = self.ui_host.text.strip()
         port  = self.ui_port.text.strip()
@@ -712,7 +726,12 @@ class PithonArenaClient:
         self.screen.blit(rt, (self.rematch_btn.centerx - rt.get_width() // 2,
                                 self.rematch_btn.centery - rt.get_height() // 2))
 
-        hint = self.font_sm.render("Press Enter to chat  •  Click Rematch to play again", True, C_BORDER)
+        draw_rounded_rect(self.screen, C_PANEL, self.lobby_btn, 10, 2, C_BORDER)
+        lt = self.font_md.render("🏠  Lobby", True, C_TEXT)
+        self.screen.blit(lt, (self.lobby_btn.centerx - lt.get_width() // 2,
+                               self.lobby_btn.centery - lt.get_height() // 2))
+
+        hint = self.font_sm.render("Press Enter to chat  •  Rematch or return to Lobby", True, C_BORDER)
         self.screen.blit(hint, (cx - hint.get_width() // 2, cy + 140))
 
         # Still show chat sidebar during game over

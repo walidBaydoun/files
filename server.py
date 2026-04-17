@@ -85,6 +85,8 @@ class ClientHandler:
             self._on_cheer(msg)
         elif t == MSG_REMATCH:
             self.server.handle_rematch(self)
+        elif t == MSG_LEAVE:
+            self._on_leave()
 
     # ── Handlers ───────────────────────────────────────────────────────────────
     def _on_join(self, msg: dict):
@@ -137,6 +139,13 @@ class ClientHandler:
         else:
             payload["private"] = False
             self.server.broadcast(payload)
+
+    def _on_leave(self):
+        """Player or fan voluntarily returns to lobby."""
+        if self.role in ("player", "fan"):
+            self.role = "lobby"
+            self.player_id = None
+            self.server.broadcast_player_list()
 
     def _on_cheer(self, msg: dict):
         if not self.username or self.role != "fan":
@@ -209,7 +218,7 @@ class ArenaServer:
     def try_start_game(self):
         """Start a game if exactly 2 lobby players are waiting and no game running."""
         if self.game_state and self.game_state.running:
-            return        
+            return
         with self._lock:
             lobby = [c for c in self._clients if c.username and c.role == "lobby"]
         if len(lobby) >= 2:
