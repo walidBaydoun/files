@@ -318,8 +318,8 @@ class PithonArenaClient:
         self.btn_watch   = Button(pygame.Rect(100, 100, 220, 42), "Watch as Fan", self.F, (45,50,80), TEXT)
         self.btn_ready   = Button(pygame.Rect(100, 100, 220, 48), "Ready Up",     self.F, P0_HEAD,   BG)
 
-        self.cheer_labels = ["Fire", "Skull", "Crown", "GG", "Hype"]
-        self.cheer_colors = [(220,90,40),(150,50,200),(220,180,30),(50,180,120),(80,150,255)]
+        self.cheer_labels = ["fire", "skull", "crown", "gg", "hype"]
+        self.cheer_colors = [(220,90,40),(180,180,190),(220,180,30),(50,180,120),(80,150,255)]
 
     # ── Loop ──────────────────────────────────────────────────────────────────
     def run(self):
@@ -573,7 +573,7 @@ class PithonArenaClient:
         if self.i_am_ready:
             wt = self.F["body"].render(f"You are ready!  ({ready_count}/2 ready{dots})", True, GREEN_OK)
         elif ready_count > 0:
-            wt = self.F["body"].render(f"{ready_count}/2 players ready — click to join!", True, GOLD)
+            wt = self.F["body"].render(f"{ready_count}/2 players ready - click to join!", True, GOLD)
         else:
             wt = self.F["body"].render(f"Waiting for players to ready up{dots}", True, TEXT_DIM)
         self.screen.blit(wt, (cx - wt.get_width()//2, panel.bottom+14))
@@ -771,7 +771,7 @@ class PithonArenaClient:
         pygame.draw.line(self.screen, BORDER, (sx+8,y+18),(sx+SIDEBAR-8,y+18))
         y += 24
 
-        log_bot = WIN_H-92 if self.is_fan else WIN_H-52
+        log_bot = WIN_H-52
         log_h   = log_bot - y
         lr = pygame.Rect(sx+4, y, SIDEBAR-8, log_h)
         rr(self.screen, PANEL_DARK, lr, 6)
@@ -788,22 +788,10 @@ class PithonArenaClient:
             tt = self.F["mono_sm"].render(text[:chars], True, TEXT)
             self.screen.blit(tt, (sx+8+st.get_width()+4, my))
 
-        if self.is_fan:
-            cy2 = WIN_H-88
-            cl  = self.F["small"].render("CHEER", True, CHEER_C)
-            self.screen.blit(cl, (sx+12, cy2))
-            for i,lbl in enumerate(self.cheer_labels):
-                btn = self._cheer_rect(i)
-                col = self.cheer_colors[i]
-                rr(self.screen, (*col, 55), btn, 5)
-                rrb(self.screen, col, btn, 5, 1)
-                lt = self.F["tiny"].render(lbl, True, TEXT_BRIGHT)
-                self.screen.blit(lt, (btn.centerx-lt.get_width()//2, btn.centery-lt.get_height()//2))
-
         self.chat_inp.rect = pygame.Rect(sx+6, WIN_H-44, SIDEBAR-12, 36)
         self.chat_inp.draw(self.screen)
-        h_t = self.F["tiny"].render("/pm user  for private", True, TEXT_DIM)
-        self.screen.blit(h_t, (sx+8, WIN_H-58))
+        #h_t = self.F["tiny"].render("/pm user  for private", True, TEXT_DIM)
+        #self.screen.blit(h_t, (sx+8, WIN_H-58))
 
     def _cheer_rect(self, i):
         sx = GRID_W*CELL
