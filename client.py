@@ -740,58 +740,93 @@ class PithonArenaClient:
             self.screen.blit(ht, (bx+224, 37))
 
         # Timer
-        tcx  = GRID_W*CELL//2
+        tcx    = GRID_W*CELL//2
         urgent = time_left < 20
         t_col  = RED_ERR if urgent else ACCENT
         if urgent and int(self._t*2)%2==0:
             t_col = lerp(RED_ERR, TEXT_BRIGHT, 0.3)
-        tm  = self.F["bignum"].render(str(int(time_left)), True, t_col)
-        self.screen.blit(tm, (tcx-tm.get_width()//2, 2))
-        sl  = self.F["tiny"].render("sec", True, TEXT_DIM)
-        self.screen.blit(sl, (tcx-sl.get_width()//2, 52))
-
-        # Role badge
-        sx = GRID_W*CELL+10
-        if self.is_fan:
-            badge = self.F["small"].render("SPECTATOR", True, CHEER_C)
-        elif self.player_id is not None:
-            badge = self.F["small"].render(f"PLAYER {self.player_id+1}", True, [P0_HEAD,P1_HEAD][self.player_id])
-        else:
-            return
-        self.screen.blit(badge, (sx, 8))
+        tm = self.F["bignum"].render(str(int(time_left)), True, t_col)
+        self.screen.blit(tm, (tcx - tm.get_width()//2, 2))
+        sl = self.F["tiny"].render("sec", True, TEXT_DIM)
+        self.screen.blit(sl, (tcx - sl.get_width()//2, 52))
 
     def _draw_sidebar(self, gd):
-        sx = GRID_W*CELL
-        pygame.draw.rect(self.screen, PANEL_BG, (sx,0,SIDEBAR,WIN_H))
-        pygame.draw.line(self.screen, BORDER, (sx,0),(sx,WIN_H))
+        sx = GRID_W * CELL
+        sw = SIDEBAR
 
-        y = TOP_H+8
-        ch = self.F["small"].render("CHAT", True, TEXT_DIM)
-        self.screen.blit(ch, (sx+12, y))
-        pygame.draw.line(self.screen, BORDER, (sx+8,y+18),(sx+SIDEBAR-8,y+18))
-        y += 24
+        # Panel background
+        pygame.draw.rect(self.screen, PANEL_BG, (sx, 0, sw, WIN_H))
+        pygame.draw.line(self.screen, BORDER, (sx, 0), (sx, WIN_H), 1)
 
-        log_bot = WIN_H-52
-        log_h   = log_bot - y
-        lr = pygame.Rect(sx+4, y, SIDEBAR-8, log_h)
-        rr(self.screen, PANEL_DARK, lr, 6)
-        rrb(self.screen, BORDER, lr, 6, 1)
+        # ── Header ──────────────────────────────────────────────────────────
+        pygame.draw.rect(self.screen, PANEL_DARK, (sx, 0, sw, TOP_H))
+        pygame.draw.line(self.screen, BORDER, (sx, TOP_H), (sx + sw, TOP_H), 1)
 
-        visible = self.chat_log[-(log_h//19):]
-        for j,(sender,text,col) in enumerate(visible):
-            my = y + 4 + j*19
-            if my+18 > log_bot: break
-            st = self.F["mono_sm"].render(sender+":", True, col)
-            self.screen.blit(st, (sx+8, my))
-            avail = SIDEBAR - 16 - st.get_width()
-            chars = max(0, avail//7)
-            tt = self.F["mono_sm"].render(text[:chars], True, TEXT)
-            self.screen.blit(tt, (sx+8+st.get_width()+4, my))
+        role_label = "SPECTATOR" if self.is_fan else \
+                     f"PLAYER {self.player_id + 1}" if self.player_id is not None else "CHAT"
+        role_col   = CHEER_C if self.is_fan else \
+                     [P0_HEAD, P1_HEAD][self.player_id] if self.player_id is not None else TEXT_DIM
+        rl = self.F["h2"].render(role_label, True, role_col)
+        self.screen.blit(rl, (sx + sw//2 - rl.get_width()//2, TOP_H//2 - rl.get_height()//2))
 
-        self.chat_inp.rect = pygame.Rect(sx+6, WIN_H-44, SIDEBAR-12, 36)
+        # ── Chat area ────────────────────────────────────────────────────────
+        PAD       = 8
+        INP_H     = 42
+        HINT_H    = 20
+        chat_top  = TOP_H + PAD
+        chat_bot  = WIN_H - INP_H - HINT_H - PAD * 2
+        chat_h    = chat_bot - chat_top
+
+        # Background for message area
+        chat_rect = pygame.Rect(sx + PAD, chat_top, sw - PAD * 2, chat_h)
+        rr(self.screen, PANEL_DARK, chat_rect, 8)
+        rrb(self.screen, BORDER, chat_rect, 8, 1)
+
+        # Draw messages — one bubble per message
+        MSG_H     = 36   # height per bubble
+        MSG_PAD_X = 10
+        MSG_PAD_Y = 5
+        max_msgs  = chat_h // (MSG_H + MSG_PAD_Y)
+        visible   = self.chat_log[-max_msgs:]
+
+        # Clip drawing to chat area
+        old_clip  = self.screen.get_clip()
+        self.screen.set_clip(chat_rect.inflate(-2, -2))
+
+        for j, (sender, text, col) in enumerate(visible):
+            is_me    = sender == self.username
+            bub_w    = sw - PAD * 2 - 10
+            bub_x    = sx + PAD + 5
+            bub_y    = chat_top + PAD + j * (MSG_H + MSG_PAD_Y)
+
+            # Bubble background
+            bub_rect = pygame.Rect(bub_x, bub_y, bub_w, MSG_H)
+            bub_bg   = (28, 35, 60) if is_me else (20, 22, 38)
+            rr(self.screen, bub_bg, bub_rect, 6)
+            # Left accent bar
+            accent_col = col
+            pygame.draw.rect(self.screen, accent_col,
+                             (bub_x, bub_y + 4, 3, MSG_H - 8), border_radius=2)
+
+            # Sender name
+            name_surf = self.F["tiny"].render(sender, True, col)
+            self.screen.blit(name_surf, (bub_x + 10, bub_y + 4))
+
+            # Message text — truncate to fit
+            max_chars = (bub_w - 14) // 7
+            msg_surf  = self.F["mono_sm"].render(text[:max_chars], True, TEXT)
+            self.screen.blit(msg_surf, (bub_x + 10, bub_y + 18))
+
+        self.screen.set_clip(old_clip)
+
+        # ── Input area ──────────────────────────────────────────────────────
+        inp_y = WIN_H - INP_H - HINT_H - PAD
+        self.chat_inp.rect = pygame.Rect(sx + PAD, inp_y, sw - PAD * 2, INP_H - 4)
         self.chat_inp.draw(self.screen)
-        #h_t = self.F["tiny"].render("/pm user  for private", True, TEXT_DIM)
-        #self.screen.blit(h_t, (sx+8, WIN_H-58))
+
+        # Hint
+        hint = self.F["tiny"].render("/pm username  for private message", True, TEXT_DIM)
+        self.screen.blit(hint, (sx + sw//2 - hint.get_width()//2, WIN_H - HINT_H - 2))
 
     def _cheer_rect(self, i):
         sx = GRID_W*CELL
