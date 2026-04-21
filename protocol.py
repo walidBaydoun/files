@@ -15,6 +15,7 @@ MSG_CHEER       = "CHEER"        # {"type":"CHEER","player":"username","emoji":"
 MSG_REMATCH     = "REMATCH"      # {"type":"REMATCH"}
 MSG_LEAVE       = "LEAVE"        # {"type":"LEAVE"}  — return to lobby
 MSG_START_REQ   = "START_REQ"    # {"type":"START_REQ"}  — player requests to start
+MSG_COUNTDOWN   = "COUNTDOWN"    # {"type":"COUNTDOWN","count":3|2|1|0}
 MSG_PING        = "PING"
 
 # Server → Client

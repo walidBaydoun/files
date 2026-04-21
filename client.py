@@ -56,6 +56,7 @@ HP_RED      = (210,  60,  60)
 
 S_CONNECT   = "connect"
 S_LOBBY     = "lobby"
+S_COUNTDOWN = "countdown"
 S_GAME      = "game"
 S_GAME_OVER = "game_over"
 
@@ -286,6 +287,7 @@ class PithonArenaClient:
         self.conn_ok     = False
         self.last_dir    = None
         self._t          = 0.0
+        self.countdown   = None
 
         self.key_map = {
             pygame.K_UP:"UP", pygame.K_DOWN:"DOWN",
@@ -344,11 +346,14 @@ class PithonArenaClient:
         elif t == MSG_PLAYER_LIST:
             self.online_list = msg.get("players",[])
         elif t == MSG_GAME_START:
-            self.player_id = msg.get("your_id")
-            self.is_fan    = False
-            self.state     = S_GAME
-            self.game_over = None
-            self.game_data = None
+            self.player_id  = msg.get("your_id")
+            self.is_fan     = False
+            self.state      = S_GAME
+            self.game_over  = None
+            self.game_data  = None
+            self.countdown  = None
+        elif t == MSG_COUNTDOWN:
+            self.countdown = msg.get("count")   # 3,2,1 → show overlay; 0 → hide
         elif t == MSG_WATCH_OK:
             self.is_fan = True
             self.state  = S_GAME
@@ -445,7 +450,8 @@ class PithonArenaClient:
 
     def _to_lobby(self):
         self.state = S_LOBBY; self.game_data = None
-        self.game_over = None; self.player_id = None; self.is_fan = False
+        self.game_over = None; self.player_id = None
+        self.is_fan = False; self.countdown = None
 
     # ── Draw ──────────────────────────────────────────────────────────────────
     def _draw(self):
@@ -454,7 +460,10 @@ class PithonArenaClient:
         elif self.state == S_LOBBY:     self._draw_lobby()
         elif self.state in (S_GAME, S_GAME_OVER):
             self._draw_game()
-            if self.state == S_GAME_OVER: self._draw_gameover()
+            if self.countdown is not None and self.countdown > 0:
+                self._draw_countdown()
+            elif self.state == S_GAME_OVER:
+                self._draw_gameover()
         for p in self.particles: p.draw(self.screen)
 
     # ── Connect ───────────────────────────────────────────────────────────────
@@ -776,6 +785,41 @@ class PithonArenaClient:
         sx = GRID_W*CELL
         bw = (SIDEBAR-28)//len(self.cheer_labels)
         return pygame.Rect(sx+8+i*(bw+2), WIN_H-68, bw, 22)
+
+    # ── Countdown overlay ─────────────────────────────────────────────────────
+    def _draw_countdown(self):
+        ov = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+        ov.fill((4, 6, 14, 160))
+        self.screen.blit(ov, (0, 0))
+
+        gcx = (GRID_W * CELL) // 2
+        gcy = (TOP_H + GRID_H * CELL) // 2
+
+        n   = self.countdown
+        col = (P0_HEAD, P1_HEAD, GOLD, GREEN_OK)[min(n, 3)] if n > 0 else GREEN_OK
+
+        # Pulsing scale based on time
+        pulse = 1.0 + 0.08 * math.sin(self._t * 12)
+        num_surf = self.F["title"].render(str(n), True, col)
+        scaled_w = int(num_surf.get_width()  * pulse * 2.8)
+        scaled_h = int(num_surf.get_height() * pulse * 2.8)
+        big = pygame.transform.smoothscale(num_surf, (scaled_w, scaled_h))
+        # Glow behind number
+        gs = pygame.Surface((scaled_w + 60, scaled_h + 60), pygame.SRCALPHA)
+        gs.fill((*col[:3], 30))
+        self.screen.blit(gs, (gcx - gs.get_width()//2, gcy - gs.get_height()//2 - 20))
+        self.screen.blit(big, (gcx - big.get_width()//2, gcy - big.get_height()//2 - 20))
+
+        # "GET READY" label
+        label = self.F["h2"].render("GET READY", True, TEXT_DIM)
+        self.screen.blit(label, (gcx - label.get_width()//2, gcy + scaled_h//2 + 10))
+
+        # Player matchup
+        if self.game_data:
+            unames = self.game_data.get("usernames", [])
+            if len(unames) == 2:
+                vs = self.F["h1"].render(f"{unames[0]}  vs  {unames[1]}", True, TEXT)
+                self.screen.blit(vs, (gcx - vs.get_width()//2, gcy - scaled_h//2 - 60))
 
     # ── Game Over ─────────────────────────────────────────────────────────────
     def _draw_gameover(self):

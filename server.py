@@ -217,7 +217,7 @@ class ArenaServer:
 
     # ── Game lifecycle ─────────────────────────────────────────────────────────
     def try_start_game(self):
-        """Start a game if exactly 2 lobby players are waiting and no game running."""
+        """Start a game if 2 lobby players are waiting and no game running."""
         if self.game_state and self.game_state.running:
             return
         with self._lock:
@@ -234,13 +234,27 @@ class ArenaServer:
             }
             p0.send({"type": MSG_GAME_START, "your_id": 0, "config": config})
             p1.send({"type": MSG_GAME_START, "your_id": 1, "config": config})
-            print(f"[server] Game started: {p0.username} vs {p1.username}")
+            print(f"[server] Game starting: {p0.username} vs {p1.username}")
             self._game_thread = threading.Thread(target=self._game_loop, daemon=True)
             self._game_thread.start()
+
+    def _broadcast_countdown(self, count: int):
+        msg = {"type": MSG_COUNTDOWN, "count": count}
+        with self._lock:
+            targets = [c for c in self._clients if c.role in ("player", "fan")]
+        for c in targets:
+            c.send(msg)
 
     def _game_loop(self):
         interval = 1.0 / TICK_RATE
         gs = self.game_state
+
+        # 3-second countdown
+        for i in (3, 2, 1, 0):
+            self._broadcast_countdown(i)
+            if i > 0:
+                time.sleep(1)
+
         while gs.running:
             t0 = time.time()
             gs.tick()
