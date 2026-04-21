@@ -50,6 +50,18 @@ CHAT_ME     = ( 90, 170, 255)
 CHAT_OTHER  = (170, 175, 200)
 CHEER_C     = (255, 210,  60)
 
+# Distinct colors assigned to each username in chat
+CHAT_COLORS = [
+    (100, 200, 255),  # sky blue
+    (100, 230, 130),  # green
+    (255, 160,  60),  # orange
+    (200, 120, 255),  # purple
+    (255, 100, 130),  # pink
+    (60,  210, 200),  # teal
+    (255, 220,  60),  # yellow
+    (180, 255, 100),  # lime
+]
+
 HP_GREEN    = ( 50, 210, 100)
 HP_YELLOW   = (220, 190,  50)
 HP_RED      = (210,  60,  60)
@@ -283,6 +295,7 @@ class PithonArenaClient:
         self.ready_list  = []    # usernames currently ready
         self.i_am_ready  = False
         self.chat_log    = []
+        self._chat_colors = {}   # username -> color
         self.cheers      = []
         self.particles   = []
         self.conn_msg    = ""
@@ -381,7 +394,9 @@ class PithonArenaClient:
             s   = msg.get("from","?")
             tx  = msg.get("text","")
             prv = msg.get("private",False)
-            col = CHAT_ME if s==self.username else CHAT_OTHER
+            if s not in self._chat_colors:
+                self._chat_colors[s] = CHAT_COLORS[len(self._chat_colors) % len(CHAT_COLORS)]
+            col = self._chat_colors[s]
             self.chat_log.append((s, ("[PM] " if prv else "")+tx, col))
             if len(self.chat_log) > 80: self.chat_log.pop(0)
         elif t == MSG_CHEER_RECV:
@@ -783,8 +798,7 @@ class PithonArenaClient:
         rrb(self.screen, BORDER, chat_rect, 8, 1)
 
         # Draw messages — one bubble per message
-        MSG_H     = 36   # height per bubble
-        MSG_PAD_X = 10
+        MSG_H     = 46   # taller bubble for bigger fonts
         MSG_PAD_Y = 5
         max_msgs  = chat_h // (MSG_H + MSG_PAD_Y)
         visible   = self.chat_log[-max_msgs:]
@@ -799,23 +813,23 @@ class PithonArenaClient:
             bub_x    = sx + PAD + 5
             bub_y    = chat_top + PAD + j * (MSG_H + MSG_PAD_Y)
 
-            # Bubble background
+            # Bubble background — slightly brighter for own messages
             bub_rect = pygame.Rect(bub_x, bub_y, bub_w, MSG_H)
-            bub_bg   = (28, 35, 60) if is_me else (20, 22, 38)
-            rr(self.screen, bub_bg, bub_rect, 6)
-            # Left accent bar
-            accent_col = col
-            pygame.draw.rect(self.screen, accent_col,
-                             (bub_x, bub_y + 4, 3, MSG_H - 8), border_radius=2)
+            bub_bg   = lerp(PANEL_DARK, col, 0.07) if is_me else (18, 20, 34)
+            rr(self.screen, bub_bg, bub_rect, 7)
 
-            # Sender name
-            name_surf = self.F["tiny"].render(sender, True, col)
-            self.screen.blit(name_surf, (bub_x + 10, bub_y + 4))
+            # Left accent bar in sender color
+            pygame.draw.rect(self.screen, col,
+                             (bub_x, bub_y + 6, 3, MSG_H - 12), border_radius=2)
 
-            # Message text — truncate to fit
-            max_chars = (bub_w - 14) // 7
-            msg_surf  = self.F["mono_sm"].render(text[:max_chars], True, TEXT)
-            self.screen.blit(msg_surf, (bub_x + 10, bub_y + 18))
+            # Sender name — "small" font (13px), bright
+            name_surf = self.F["small"].render(sender, True, col)
+            self.screen.blit(name_surf, (bub_x + 12, bub_y + 5))
+
+            # Message text — "body" font (16px), bright white
+            max_chars = (bub_w - 16) // 8
+            msg_surf  = self.F["body"].render(text[:max_chars], True, TEXT_BRIGHT)
+            self.screen.blit(msg_surf, (bub_x + 12, bub_y + 22))
 
         self.screen.set_clip(old_clip)
 
