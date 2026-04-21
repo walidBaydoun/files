@@ -87,8 +87,10 @@ class ClientHandler:
             self.server.handle_rematch(self)
         elif t == MSG_LEAVE:
             self._on_leave()
-        elif t == MSG_START_REQ:
-            self.server.handle_start_req(self)
+        elif t == MSG_READY:
+            self.server.handle_ready(self, True)
+        elif t == MSG_UNREADY:
+            self.server.handle_ready(self, False)
 
     # ── Handlers ───────────────────────────────────────────────────────────────
     def _on_join(self, msg: dict):
@@ -146,6 +148,7 @@ class ClientHandler:
         if self.role in ("player", "fan"):
             self.role = "lobby"
             self.player_id = None
+            self.server.handle_ready(self, False)
             self.server.broadcast_player_list()
 
     def _on_cheer(self, msg: dict):
@@ -167,10 +170,11 @@ class ArenaServer:
         self.port = port
         self._clients: list[ClientHandler] = []
         self._lock = threading.Lock()
-        self._usernames: dict[str, ClientHandler] = {}  # name → handler
+        self._usernames: dict[str, ClientHandler] = {}
         self.game_state: GameState | None = None
         self._game_thread: threading.Thread | None = None
         self._rematch_votes: set = set()
+        self._ready_queue: list[ClientHandler] = []   # ordered — first two get matched
 
     # ── Client registry ────────────────────────────────────────────────────────
     def register_username(self, name: str, client: ClientHandler) -> bool:
@@ -188,6 +192,7 @@ class ArenaServer:
                 self._clients.remove(client)
             if client.username and self._usernames.get(client.username) is client:
                 del self._usernames[client.username]
+        self.handle_ready(client, False)
         print(f"[server] {client.username or client.addr} disconnected.")
         self.broadcast_player_list()
 
@@ -217,26 +222,37 @@ class ArenaServer:
 
     # ── Game lifecycle ─────────────────────────────────────────────────────────
     def try_start_game(self):
-        """Start a game if 2 lobby players are waiting and no game running."""
+        """Start a game with the first two ready players."""
         if self.game_state and self.game_state.running:
             return
         with self._lock:
-            lobby = [c for c in self._clients if c.username and c.role == "lobby"]
-        if len(lobby) >= 2:
-            p0, p1 = lobby[0], lobby[1]
-            p0.role, p1.role = "player", "player"
-            p0.player_id, p1.player_id = 0, 1
-            self.game_state = GameState([p0.username, p1.username])
-            self._rematch_votes.clear()
-            config = {
-                "grid_w": 30, "grid_h": 22,
-                "usernames": [p0.username, p1.username],
-            }
-            p0.send({"type": MSG_GAME_START, "your_id": 0, "config": config})
-            p1.send({"type": MSG_GAME_START, "your_id": 1, "config": config})
-            print(f"[server] Game starting: {p0.username} vs {p1.username}")
-            self._game_thread = threading.Thread(target=self._game_loop, daemon=True)
-            self._game_thread.start()
+            ready = [c for c in self._ready_queue if c.role == "lobby" and c.username]
+        if len(ready) < 2:
+            return
+        p0, p1 = ready[0], ready[1]
+        # Remove them from ready queue
+        with self._lock:
+            for p in (p0, p1):
+                if p in self._ready_queue:
+                    self._ready_queue.remove(p)
+        p0.role, p1.role = "player", "player"
+        p0.player_id, p1.player_id = 0, 1
+        self.game_state = GameState([p0.username, p1.username])
+        self._rematch_votes.clear()
+        config = {"grid_w": 30, "grid_h": 22, "usernames": [p0.username, p1.username]}
+        p0.send({"type": MSG_GAME_START, "your_id": 0, "config": config})
+        p1.send({"type": MSG_GAME_START, "your_id": 1, "config": config})
+        print(f"[server] Game starting: {p0.username} vs {p1.username}")
+        # Broadcast updated ready status (those two are no longer ready)
+        with self._lock:
+            names = [c.username for c in self._ready_queue if c.username]
+        payload = {"type": MSG_READY_STATUS, "ready": names, "count": len(names)}
+        with self._lock:
+            targets = list(self._clients)
+        for c in targets:
+            c.send(payload)
+        self._game_thread = threading.Thread(target=self._game_loop, daemon=True)
+        self._game_thread.start()
 
     def _broadcast_countdown(self, count: int):
         msg = {"type": MSG_COUNTDOWN, "count": count}
@@ -281,15 +297,31 @@ class ArenaServer:
                 if c.role in ("player", "fan"):
                     c.role = "lobby"
                     c.player_id = None
+            self._ready_queue.clear()
         self.broadcast_player_list()
 
-    def handle_start_req(self, client: ClientHandler):
-        """A lobby player clicked Start Match — start if 2+ lobby players exist."""
-        if not client.username or client.role != "lobby":
-            return
-        if self.game_state and self.game_state.running:
-            return
-        self.try_start_game()
+    def handle_ready(self, client: ClientHandler, ready: bool):
+        """Add or remove a client from the ready queue and broadcast status."""
+        with self._lock:
+            if ready:
+                if client not in self._ready_queue and client.role == "lobby" and client.username:
+                    self._ready_queue.append(client)
+            else:
+                if client in self._ready_queue:
+                    self._ready_queue.remove(client)
+            queue_snapshot = list(self._ready_queue)
+
+        # Broadcast ready status to everyone in lobby
+        names = [c.username for c in queue_snapshot if c.username]
+        payload = {"type": MSG_READY_STATUS, "ready": names, "count": len(names)}
+        with self._lock:
+            targets = [c for c in self._clients if c.username]
+        for c in targets:
+            c.send(payload)
+
+        # If 2+ players are ready, start a game with the first two
+        if len(queue_snapshot) >= 2:
+            self.try_start_game()
 
     def handle_rematch(self, client: ClientHandler):
         if client.username:

@@ -16,6 +16,9 @@ MSG_REMATCH     = "REMATCH"      # {"type":"REMATCH"}
 MSG_LEAVE       = "LEAVE"        # {"type":"LEAVE"}  — return to lobby
 MSG_START_REQ   = "START_REQ"    # {"type":"START_REQ"}  — player requests to start
 MSG_COUNTDOWN   = "COUNTDOWN"    # {"type":"COUNTDOWN","count":3|2|1|0}
+MSG_READY       = "READY"        # {"type":"READY"}   — player readies up
+MSG_UNREADY     = "UNREADY"      # {"type":"UNREADY"} — player cancels ready
+MSG_READY_STATUS= "READY_STATUS" # {"type":"READY_STATUS","ready":["alice",...], "count":1}
 MSG_PING        = "PING"
 
 # Server → Client

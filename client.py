@@ -280,6 +280,8 @@ class PithonArenaClient:
         self.game_data   = None
         self.game_over   = None
         self.online_list = []
+        self.ready_list  = []    # usernames currently ready
+        self.i_am_ready  = False
         self.chat_log    = []
         self.cheers      = []
         self.particles   = []
@@ -314,7 +316,7 @@ class PithonArenaClient:
         self.btn_rematch = Button(pygame.Rect(100, 100, 210, 48), "Rematch",      self.F, P0_HEAD, BG)
         self.btn_lobby   = Button(pygame.Rect(100, 100, 210, 48), "Back to Lobby",self.F, PANEL_BG, TEXT)
         self.btn_watch   = Button(pygame.Rect(100, 100, 220, 42), "Watch as Fan", self.F, (45,50,80), TEXT)
-        self.btn_start   = Button(pygame.Rect(100, 100, 220, 48), "Start Match",  self.F, P0_HEAD,   BG)
+        self.btn_ready   = Button(pygame.Rect(100, 100, 220, 48), "Ready Up",     self.F, P0_HEAD,   BG)
 
         self.cheer_labels = ["Fire", "Skull", "Crown", "GG", "Hype"]
         self.cheer_colors = [(220,90,40),(150,50,200),(220,180,30),(50,180,120),(80,150,255)]
@@ -346,6 +348,9 @@ class PithonArenaClient:
             self.conn_ok  = False
         elif t == MSG_PLAYER_LIST:
             self.online_list = msg.get("players",[])
+        elif t == MSG_READY_STATUS:
+            self.ready_list = msg.get("ready", [])
+            self.i_am_ready = self.username in self.ready_list
         elif t == MSG_GAME_START:
             self.player_id  = msg.get("your_id")
             self.is_fan     = False
@@ -396,9 +401,13 @@ class PithonArenaClient:
             elif self.state == S_LOBBY:
                 if self.btn_watch.handle_event(ev) and self.net:
                     self.net.send({"type": MSG_WATCH})
-                if self.btn_start.handle_event(ev) and self.net:
-                    if len(self.online_list) >= 2:
-                        self.net.send({"type": MSG_START_REQ})
+                if self.btn_ready.handle_event(ev) and self.net:
+                    if self.i_am_ready:
+                        self.net.send({"type": MSG_UNREADY})
+                        self.i_am_ready = False
+                    else:
+                        self.net.send({"type": MSG_READY})
+                        self.i_am_ready = True
             elif self.state == S_GAME:
                 if self.chat_inp.handle_event(ev):
                     self._send_chat()
@@ -454,6 +463,7 @@ class PithonArenaClient:
         self.state = S_LOBBY; self.game_data = None
         self.game_over = None; self.player_id = None
         self.is_fan = False; self.countdown = None
+        self.i_am_ready = False; self.ready_list = []
 
     # ── Draw ──────────────────────────────────────────────────────────────────
     def _draw(self):
@@ -557,29 +567,41 @@ class PithonArenaClient:
                 nt = self.F["body"].render(name + ("  (you)" if is_me else ""), True, P0_HEAD if is_me else TEXT)
                 self.screen.blit(nt, (panel.x+44, ry+4))
 
-        # Status + buttons
+        # Status message
         dots = "." * (int(self._t*2)%4)
-        can_start = len(self.online_list) >= 2
-        if can_start:
-            wt = self.F["body"].render("Opponent found! Ready to play.", True, GREEN_OK)
+        ready_count = len(self.ready_list)
+        if self.i_am_ready:
+            wt = self.F["body"].render(f"You are ready!  ({ready_count}/2 ready{dots})", True, GREEN_OK)
+        elif ready_count > 0:
+            wt = self.F["body"].render(f"{ready_count}/2 players ready — click to join!", True, GOLD)
         else:
-            wt = self.F["body"].render(f"Waiting for an opponent to join{dots}", True, TEXT_DIM)
+            wt = self.F["body"].render(f"Waiting for players to ready up{dots}", True, TEXT_DIM)
         self.screen.blit(wt, (cx - wt.get_width()//2, panel.bottom+14))
 
-        # Start Match button (big, center)
-        self.btn_start.rect = pygame.Rect(cx-110, panel.bottom+44, 220, 48)
-        self.btn_start.bg   = P0_HEAD if can_start else (40, 55, 50)
-        self.btn_start.fg   = BG if can_start else TEXT_DIM
-        self.btn_start.draw(self.screen)
-        if not can_start:
-            nd = self.F["tiny"].render("Need 2 players to start", True, TEXT_DIM)
-            self.screen.blit(nd, (cx - nd.get_width()//2, panel.bottom+100))
+        # Ready Up / Cancel Ready button
+        self.btn_ready.rect = pygame.Rect(cx-110, panel.bottom+46, 220, 48)
+        if self.i_am_ready:
+            self.btn_ready.text = "Cancel Ready"
+            self.btn_ready.bg   = (60, 40, 40)
+            self.btn_ready.fg   = RED_ERR
+        else:
+            self.btn_ready.text = "Ready Up"
+            self.btn_ready.bg   = P0_HEAD
+            self.btn_ready.fg   = BG
+        self.btn_ready.draw(self.screen)
+
+        # Ready list — show who is ready
+        if self.ready_list:
+            for i, name in enumerate(self.ready_list[:2]):
+                col = P0_HEAD if i == 0 else P1_HEAD
+                rt = self.F["small"].render(f"  {name} is ready!", True, col)
+                self.screen.blit(rt, (cx - rt.get_width()//2, panel.bottom+104+i*20))
 
         # Watch button below
-        self.btn_watch.rect = pygame.Rect(cx-90, panel.bottom+104, 180, 36)
+        self.btn_watch.rect = pygame.Rect(cx-90, panel.bottom+148, 180, 36)
         self.btn_watch.draw(self.screen)
         ht = self.F["small"].render("Spectate an ongoing match", True, TEXT_DIM)
-        self.screen.blit(ht, (cx - ht.get_width()//2, panel.bottom+148))
+        self.screen.blit(ht, (cx - ht.get_width()//2, panel.bottom+192))
 
         k = self.F["tiny"].render("Move: WASD or Arrow Keys     Private chat: /pm username message", True, TEXT_DIM)
         self.screen.blit(k, (cx - k.get_width()//2, WIN_H-20))
