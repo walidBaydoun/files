@@ -1,1011 +1,939 @@
 """
-Pithon Arena - Client  (redesigned UI)
-Usage: python client.py
+Pithon Arena - Client v4  |  Bold Neon Redesign
 """
-
 import sys, socket, threading, queue, time, math, random
 import pygame, pygame.gfxdraw
 from protocol import *
 
 # ── Layout ─────────────────────────────────────────────────────────────────────
 CELL    = 26
-SIDEBAR = 310
-TOP_H   = 68
+SIDEBAR = 330
+TOP_H   = 80
 WIN_W   = GRID_W * CELL + SIDEBAR
 WIN_H   = GRID_H * CELL + TOP_H
 FPS     = 60
 
-# ── Palette ────────────────────────────────────────────────────────────────────
-BG          = (10,  12,  20)
-GRID_DARK   = (16,  18,  30)
-GRID_LINE   = (22,  24,  40)
-WALL_C      = (40,  44,  80)
-PANEL_BG    = (14,  16,  26)
-PANEL_DARK  = (10,  12,  20)
-BORDER      = (45,  50,  90)
-BORDER_HI   = (80, 100, 180)
+# ── Neon palette ───────────────────────────────────────────────────────────────
+BG        = (  6,   7,  14)   # near-black
+PANEL     = ( 10,  12,  22)
+PANEL2    = ( 14,  17,  32)
+BORDER    = ( 35,  40,  80)
+BORDER_HI = ( 70,  90, 200)
 
-P0_HEAD     = ( 50, 230, 120)
-P0_BODY     = ( 30, 160,  85)
-P0_GLOW     = ( 80, 255, 160)
-P1_HEAD     = (240,  80,  60)
-P1_BODY     = (180,  50,  35)
-P1_GLOW     = (255, 120,  90)
-DEAD_C      = ( 55,  55,  70)
+# Neon player colors
+P0        = ( 0,  255, 140)   # neon green
+P0_D      = ( 0,  160,  88)
+P0_GLOW   = (80,  255, 180)
+P1        = (255,  50,  90)   # neon red/pink
+P1_D      = (160,  30,  55)
+P1_GLOW   = (255, 120, 150)
+DEAD      = ( 45,  48,  62)
 
-PIE_GOLD    = (255, 210,  50)
-PIE_NORM    = (255, 130,  40)
-PIE_ROT     = ( 90, 130,  50)
-OBS_ROCK    = (100, 105, 125)
-OBS_SPIKE   = (160, 165, 200)
+PIE_G     = (255, 210,  40)
+PIE_N     = (255, 130,  30)
+PIE_R     = ( 70, 180,  60)
+OBS_R     = ( 80,  85, 110)
+OBS_S     = (130, 140, 190)
 
-TEXT        = (210, 215, 235)
-TEXT_DIM    = (110, 115, 145)
-TEXT_BRIGHT = (240, 245, 255)
-ACCENT      = ( 90, 185, 255)
-GOLD        = (255, 200,  50)
-GREEN_OK    = ( 60, 200, 110)
-RED_ERR     = (220,  70,  70)
-CHAT_ME     = ( 90, 170, 255)
-CHAT_OTHER  = (170, 175, 200)
-CHEER_C     = (255, 210,  60)
+# UI text — HIGH CONTRAST
+WHITE     = (255, 255, 255)
+OFFWHITE  = (230, 235, 255)
+GRAY      = (150, 155, 185)
+DIMGRAY   = ( 80,  85, 115)
+ACCENT    = ( 60, 180, 255)   # neon blue
+GOLD      = (255, 200,  30)
+GREEN_C   = ( 50, 220, 110)
+RED_C     = (255,  55,  75)
+CHEER_C   = (255, 200,  40)
 
-# Distinct colors assigned to each username in chat
+HP_G      = ( 40, 220,  90)
+HP_Y      = (220, 185,  35)
+HP_R      = (220,  45,  60)
+
 CHAT_COLORS = [
-    (100, 200, 255),  # sky blue
-    (100, 230, 130),  # green
-    (255, 160,  60),  # orange
-    (200, 120, 255),  # purple
-    (255, 100, 130),  # pink
-    (60,  210, 200),  # teal
-    (255, 220,  60),  # yellow
-    (180, 255, 100),  # lime
+    ( 80, 200, 255), (80, 255, 160), (255, 160, 50),
+    (200, 100, 255), (255, 90, 140), (50, 220, 200),
+    (255, 220, 60),  (160, 255, 90),
 ]
 
-HP_GREEN    = ( 50, 210, 100)
-HP_YELLOW   = (220, 190,  50)
-HP_RED      = (210,  60,  60)
+GRID_A    = ( 11,  13,  23)
+GRID_B    = (  9,  11,  19)
+GRID_LINE = ( 17,  19,  33)
+WALL_C    = ( 50,  55, 100)
 
-S_CONNECT   = "connect"
-S_LOBBY     = "lobby"
-S_COUNTDOWN = "countdown"
-S_GAME      = "game"
-S_GAME_OVER = "game_over"
+S_CONNECT="connect"; S_LOBBY="lobby"; S_GAME="game"; S_OVER="over"
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-def lerp(a, b, t):
+# ── Math helpers ───────────────────────────────────────────────────────────────
+def lrp(a,b,t):
+    t=max(0.,min(1.,t))
     return tuple(int(a[i]+(b[i]-a[i])*t) for i in range(3))
-
-def hp_color(ratio):
-    if ratio > 0.5: return lerp(HP_YELLOW, HP_GREEN, (ratio-0.5)*2)
-    return lerp(HP_RED, HP_YELLOW, ratio*2)
-
-def aa_circle(surf, color, center, r):
-    if r < 1: return
-    pygame.gfxdraw.aacircle(surf, int(center[0]), int(center[1]), int(r), color)
-    pygame.gfxdraw.filled_circle(surf, int(center[0]), int(center[1]), int(r), color)
-
-def rr(surf, color, rect, r=8):
-    pygame.draw.rect(surf, color, rect, border_radius=r)
-
-def rrb(surf, color, rect, r=8, w=1):
-    pygame.draw.rect(surf, color, rect, w, border_radius=r)
+def easeout(t): return 1-(1-min(1.,t))**3
+def easeback(t): return 1-(1-min(1.,t))**2
+def hpcol(r):
+    if r>.5: return lrp(HP_Y,HP_G,(r-.5)*2)
+    return lrp(HP_R,HP_Y,r*2)
+def aac(surf,col,pos,r):
+    if r<1: return
+    x,y,r=int(pos[0]),int(pos[1]),int(r)
+    try:
+        pygame.gfxdraw.aacircle(surf,x,y,r,col)
+        pygame.gfxdraw.filled_circle(surf,x,y,r,col)
+    except: pass
+def rr(surf,col,rect,r=8): pygame.draw.rect(surf,col,rect,border_radius=r)
+def rrb(surf,col,rect,r=8,w=1): pygame.draw.rect(surf,col,rect,w,border_radius=r)
+def glow_rect(surf, col, rect, radius=10, spread=12, alpha=40):
+    g=pygame.Surface((rect.width+spread*2,rect.height+spread*2),pygame.SRCALPHA)
+    pygame.draw.rect(g,(*col[:3],alpha),(spread//2,spread//2,rect.width+spread,rect.height+spread),border_radius=radius+spread//2)
+    surf.blit(g,(rect.x-spread//2,rect.y-spread//2))
+def glow_circle(surf, col, pos, r, spread=14, alpha=45):
+    total=r+spread
+    g=pygame.Surface((total*2+2,total*2+2),pygame.SRCALPHA)
+    pygame.draw.circle(g,(*col[:3],alpha),(total+1,total+1),total)
+    surf.blit(g,(int(pos[0])-total-1,int(pos[1])-total-1))
 
 # ── Fonts ──────────────────────────────────────────────────────────────────────
 def load_fonts():
-    ui_names   = ["segoeui","calibri","arial","helvetica","freesans","dejavusans"]
-    mono_names = ["consolas","cascadiacode","couriernew","lucidaconsole","monospace"]
-    def get(names, size, bold=False):
-        for n in names:
-            p = pygame.font.match_font(n, bold=bold)
-            if p:
-                return pygame.font.Font(p, size)
-        return pygame.font.SysFont("monospace", size, bold=bold)
+    UI=["segoeui","calibri","arialrounded","arial","freesans","dejavusans"]
+    MO=["consolas","cascadiacode","couriernew","monospace"]
+    def g(n,s,b=False):
+        for nm in n:
+            p=pygame.font.match_font(nm,bold=b)
+            if p: return pygame.font.Font(p,s)
+        return pygame.font.SysFont("monospace",s,bold=b)
     return {
-        "title":   get(ui_names, 46, True),
-        "h1":      get(ui_names, 30, True),
-        "h2":      get(ui_names, 21, True),
-        "body":    get(ui_names, 16),
-        "small":   get(ui_names, 13),
-        "tiny":    get(ui_names, 11),
-        "mono":    get(mono_names, 14),
-        "mono_sm": get(mono_names, 12),
-        "bignum":  get(ui_names, 50, True),
+        "giant": g(UI,64,True),    # countdown, win screen
+        "title": g(UI,42,True),    # screen titles
+        "h1":    g(UI,30,True),    # section headers
+        "h2":    g(UI,22,True),    # sub-headers, player names
+        "body":  g(UI,18),         # normal UI text
+        "sm":    g(UI,15),         # small labels
+        "xs":    g(UI,12),         # hints, tiny labels
+        "chat":  g(MO,16),         # chat messages
+        "chatname": g(UI,13,True), # chat sender names
+        "num":   g(UI,58,True),    # timer
     }
 
 # ── Network ────────────────────────────────────────────────────────────────────
-class NetworkThread(threading.Thread):
-    def __init__(self, host, port, recv_q):
+class Net(threading.Thread):
+    def __init__(self,host,port,q):
         super().__init__(daemon=True)
-        self.host, self.port, self.recv_q = host, port, recv_q
-        self._sock = None
-        self._send_q = queue.Queue()
-        self._buf = b""
-        self.connected = False
-
+        self.host,self.port,self.q=host,port,q
+        self._sock=None; self._sq=queue.Queue(); self._buf=b""; self.ok=False
     def run(self):
         try:
-            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._sock.connect((self.host, self.port))
-            self.connected = True
-            threading.Thread(target=self._sender, daemon=True).start()
-            self._receiver()
-        except Exception as e:
-            self.recv_q.put({"type": "_NET_ERROR", "reason": str(e)})
-
-    def _receiver(self):
+            self._sock=socket.socket(); self._sock.connect((self.host,self.port))
+            self.ok=True
+            threading.Thread(target=self._sl,daemon=True).start()
+            self._rl()
+        except Exception as e: self.q.put({"type":"_ERR","reason":str(e)})
+    def _rl(self):
         while True:
-            try:
-                chunk = self._sock.recv(4096)
-            except Exception:
-                self.recv_q.put({"type": "_NET_ERROR", "reason": "Disconnected"})
-                return
-            if not chunk:
-                self.recv_q.put({"type": "_NET_ERROR", "reason": "Server closed"})
-                return
-            self._buf += chunk
+            try: chunk=self._sock.recv(4096)
+            except: self.q.put({"type":"_ERR","reason":"Disconnected"}); return
+            if not chunk: self.q.put({"type":"_ERR","reason":"Server closed"}); return
+            self._buf+=chunk
             while b"\n" in self._buf:
-                line, self._buf = self._buf.split(b"\n", 1)
-                try:
-                    self.recv_q.put(decode(line + b"\n"))
-                except Exception:
-                    pass
-
-    def _sender(self):
+                line,self._buf=self._buf.split(b"\n",1)
+                try: self.q.put(decode(line+b"\n"))
+                except: pass
+    def _sl(self):
         while True:
-            msg = self._send_q.get()
-            if msg is None: break
-            try:
-                self._sock.sendall(encode(msg))
-            except Exception:
-                break
+            m=self._sq.get()
+            if m is None: break
+            try: self._sock.sendall(encode(m))
+            except: break
+    def send(self,m):
+        if self.ok: self._sq.put(m)
 
-    def send(self, msg):
-        if self.connected:
-            self._send_q.put(msg)
-
-# ── Text Input ─────────────────────────────────────────────────────────────────
-class TextInput:
-    def __init__(self, rect, F, placeholder="", max_len=40):
-        self.rect = rect
-        self.F = F
-        self.placeholder = placeholder
-        self.max_len = max_len
-        self.text = ""
-        self.active = False
-        self._blink = True
-        self._bt = 0
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            self.active = self.rect.collidepoint(event.pos)
-        if event.type == pygame.KEYDOWN and self.active:
-            if event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
-            elif event.key not in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_TAB):
-                if len(self.text) < self.max_len and event.unicode.isprintable():
-                    self.text += event.unicode
-            return event.key in (pygame.K_RETURN, pygame.K_KP_ENTER)
+# ── Input widget ──────────────────────────────────────────────────────────────
+class Inp:
+    def __init__(self,rect,F,hint="",maxlen=40):
+        self.rect=pygame.Rect(rect); self.F=F; self.hint=hint
+        self.maxlen=maxlen; self.text=""; self.active=False
+        self._bl=True; self._bt=0
+    def on_event(self,ev):
+        if ev.type==pygame.MOUSEBUTTONDOWN: self.active=self.rect.collidepoint(ev.pos)
+        if ev.type==pygame.KEYDOWN and self.active:
+            if ev.key==pygame.K_BACKSPACE: self.text=self.text[:-1]
+            elif ev.key not in(pygame.K_RETURN,pygame.K_KP_ENTER,pygame.K_TAB):
+                if len(self.text)<self.maxlen and ev.unicode.isprintable():
+                    self.text+=ev.unicode
+            return ev.key in(pygame.K_RETURN,pygame.K_KP_ENTER)
         return False
-
-    def draw(self, surf, label=None):
-        now = pygame.time.get_ticks()
-        if now - self._bt > 530:
-            self._blink = not self._blink
-            self._bt = now
-        bg = (22, 26, 42) if self.active else (16, 18, 30)
-        rr(surf, bg, self.rect, 8)
-        rrb(surf, ACCENT if self.active else BORDER, self.rect, 8, 2 if self.active else 1)
-        disp = self.text or self.placeholder
-        col  = TEXT if self.text else TEXT_DIM
-        ts   = self.F["body"].render(disp, True, col)
-        ty   = self.rect.centery - ts.get_height()//2
-        surf.blit(ts, (self.rect.x+12, ty))
-        if self.active and self._blink:
-            cx = self.rect.x + 12 + self.F["body"].size(self.text)[0] + 1
-            pygame.draw.line(surf, ACCENT, (cx, ty+2), (cx, ty+ts.get_height()-2), 2)
+    def draw(self,surf,label=None):
+        now=pygame.time.get_ticks()
+        if now-self._bt>500: self._bl=not self._bl; self._bt=now
+        if self.active:
+            glow_rect(surf,ACCENT,self.rect,10,18,35)
+        bg=(18,22,42) if self.active else (12,14,26)
+        bc=ACCENT if self.active else BORDER
+        bw=2 if self.active else 1
+        rr(surf,bg,self.rect,10)
+        rrb(surf,bc,self.rect,10,bw)
+        disp=self.text or self.hint
+        col=WHITE if self.text else DIMGRAY
+        ts=self.F["body"].render(disp,True,col)
+        ty=self.rect.centery-ts.get_height()//2
+        surf.blit(ts,(self.rect.x+16,ty))
+        if self.active and self._bl:
+            cx2=self.rect.x+16+self.F["body"].size(self.text)[0]+1
+            pygame.draw.line(surf,ACCENT,(cx2,ty+3),(cx2,ty+ts.get_height()-3),2)
         if label:
-            lt = self.F["small"].render(label, True, TEXT_DIM)
-            surf.blit(lt, (self.rect.x, self.rect.y - lt.get_height() - 4))
+            lt=self.F["sm"].render(label,True,GRAY)
+            surf.blit(lt,(self.rect.x,self.rect.y-lt.get_height()-6))
 
-# ── Button ─────────────────────────────────────────────────────────────────────
-class Button:
-    def __init__(self, rect, text, F, bg=None, fg=None):
-        self.rect = pygame.Rect(rect)
-        self.text = text
-        self.F = F
-        self.bg = bg or ACCENT
-        self.fg = fg or BG
-        self._hover = False
-        self._pt = 0
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEMOTION:
-            self._hover = self.rect.collidepoint(event.pos)
-        if event.type == pygame.MOUSEBUTTONDOWN and self.rect.collidepoint(event.pos):
-            self._pt = pygame.time.get_ticks()
-            return True
+# ── Button widget ─────────────────────────────────────────────────────────────
+class Btn:
+    def __init__(self,rect,text,F,bg=None,fg=None,outline=None):
+        self.rect=pygame.Rect(rect); self.text=text; self.F=F
+        self.bg=bg or ACCENT; self.fg=fg or BG; self.outline=outline
+        self._hov=False; self._pt=0
+    def on_event(self,ev):
+        if ev.type==pygame.MOUSEMOTION: self._hov=self.rect.collidepoint(ev.pos)
+        if ev.type==pygame.MOUSEBUTTONDOWN and self.rect.collidepoint(ev.pos):
+            self._pt=pygame.time.get_ticks(); return True
         return False
+    def draw(self,surf):
+        pr=pygame.time.get_ticks()-self._pt<140
+        col=lrp(self.bg,WHITE,0.18) if self._hov else self.bg
+        if pr: col=lrp(col,BG,0.3)
+        if self._hov: glow_rect(surf,col,self.rect,10,20,30)
+        rr(surf,col,self.rect,10)
+        if self.outline:
+            rrb(surf,self.outline,self.rect,10,2)
+        ts=self.F["h2"].render(self.text,True,self.fg)
+        surf.blit(ts,(self.rect.centerx-ts.get_width()//2,self.rect.centery-ts.get_height()//2))
 
-    def draw(self, surf):
-        pressed = pygame.time.get_ticks() - self._pt < 120
-        col = lerp(self.bg, TEXT_BRIGHT, 0.18) if self._hover else self.bg
-        if pressed: col = lerp(col, BG, 0.3)
-        r = self.rect
-        if self._hover:
-            g = pygame.Surface((r.w+16, r.h+16), pygame.SRCALPHA)
-            pygame.draw.rect(g, (*col, 35), (8, 8, r.w, r.h), border_radius=10)
-            surf.blit(g, (r.x-8, r.y-8))
-        rr(surf, col, r, 9)
-        ts = self.F["h2"].render(self.text, True, self.fg)
-        surf.blit(ts, (r.centerx - ts.get_width()//2, r.centery - ts.get_height()//2))
+# ── Particles ─────────────────────────────────────────────────────────────────
+class Spark:
+    def __init__(self,x,y,col,spd=None,sz=None,gravity=0.1):
+        a=random.uniform(0,math.tau); s=spd or random.uniform(2,6)
+        self.x,self.y=float(x),float(y)
+        self.vx,self.vy=math.cos(a)*s,math.sin(a)*s-random.uniform(0,2)
+        self.col=col; self.life=1.0
+        self.dec=random.uniform(0.022,0.055)
+        self.sz=sz or random.randint(3,7)
+        self.grav=gravity
+    def tick(self):
+        self.x+=self.vx; self.y+=self.vy; self.vy+=self.grav
+        self.life-=self.dec; return self.life>0
+    def draw(self,surf):
+        s=max(1,int(self.sz*self.life))
+        t=pygame.Surface((s*2+2,s*2+2),pygame.SRCALPHA)
+        pygame.draw.circle(t,(*self.col[:3],int(230*self.life)),(s+1,s+1),s)
+        surf.blit(t,(int(self.x)-s,int(self.y)-s))
 
-# ── Health Bar ─────────────────────────────────────────────────────────────────
-def draw_hp(surf, x, y, w, h, val, mx):
-    ratio = max(0.0, min(1.0, val/mx))
-    rr(surf, (25, 28, 45), pygame.Rect(x, y, w, h), h//2)
-    if ratio > 0:
-        col = hp_color(ratio)
-        fw  = max(h, int(w*ratio))
-        rr(surf, col, pygame.Rect(x, y, fw, h), h//2)
-    rrb(surf, BORDER, pygame.Rect(x, y, w, h), h//2, 1)
+def burst(sparks, x, y, col, n=18, spd_range=(1.5,6), sz_range=(2,7)):
+    for _ in range(n):
+        sparks.append(Spark(x,y,col,
+            spd=random.uniform(*spd_range),
+            sz=random.randint(*sz_range)))
 
-# ── Particle ───────────────────────────────────────────────────────────────────
-class Particle:
-    def __init__(self, x, y, color):
-        a = random.uniform(0, math.tau)
-        s = random.uniform(1.5, 4.5)
-        self.x, self.y = float(x), float(y)
-        self.vx, self.vy = math.cos(a)*s, math.sin(a)*s - 1.5
-        self.color = color
-        self.life  = 1.0
-        self.decay = random.uniform(0.03, 0.07)
-        self.size  = random.randint(3, 7)
+# ── HP bar ─────────────────────────────────────────────────────────────────────
+def draw_hp(surf,x,y,w,h,val,mx,glow_col=None):
+    ratio=max(0.,min(1.,val/mx))
+    rr(surf,(16,18,32),pygame.Rect(x,y,w,h),h//2)
+    if ratio>0:
+        col=hpcol(ratio)
+        fw=max(h,int(w*ratio))
+        rr(surf,col,pygame.Rect(x,y,fw,h),h//2)
+        # Bright shimmer
+        sx2=x+int(fw*0.5); sw2=max(4,int(fw*0.3))
+        sh=pygame.Surface((sw2,h),pygame.SRCALPHA); sh.fill((*WHITE,45))
+        surf.blit(sh,(sx2,y))
+        if glow_col:
+            glow_rect(surf,glow_col,pygame.Rect(x,y,fw,h),h//2,6,30)
+    rrb(surf,BORDER,pygame.Rect(x,y,w,h),h//2,1)
+    # HP text inside bar
+    ht=pygame.font.SysFont("monospace",11,True).render(f"{int(val)}",True,WHITE)
+    surf.blit(ht,(x+4,y+h//2-ht.get_height()//2))
 
-    def update(self):
-        self.x += self.vx; self.y += self.vy; self.vy += 0.12
-        self.life -= self.decay
-        return self.life > 0
+# ── Scanline overlay ──────────────────────────────────────────────────────────
+_scanline_surf = None
+def get_scanlines(w,h):
+    global _scanline_surf
+    if _scanline_surf is None or _scanline_surf.get_size()!=(w,h):
+        _scanline_surf=pygame.Surface((w,h),pygame.SRCALPHA)
+        for y in range(0,h,3):
+            pygame.draw.line(_scanline_surf,(0,0,0,18),(0,y),(w,y))
+    return _scanline_surf
 
-    def draw(self, surf):
-        s = max(1, int(self.size * self.life))
-        tmp = pygame.Surface((s*2+2, s*2+2), pygame.SRCALPHA)
-        pygame.draw.circle(tmp, (*self.color[:3], int(255*self.life)), (s+1, s+1), s)
-        surf.blit(tmp, (int(self.x)-s, int(self.y)-s))
-
-# ── Client ─────────────────────────────────────────────────────────────────────
-class PithonArenaClient:
+# ── Main arena ────────────────────────────────────────────────────────────────
+class Arena:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((WIN_W, WIN_H), pygame.RESIZABLE)
+        self.screen=pygame.display.set_mode((WIN_W,WIN_H))
         pygame.display.set_caption("Pithon Arena")
-        self.clock = pygame.time.Clock()
-        self.F     = load_fonts()
+        self.clock=pygame.time.Clock()
+        self.F=load_fonts()
 
-        self.net         = None
-        self.recv_q      = queue.Queue()
-        self.state       = S_CONNECT
-        self.username    = None
-        self.player_id   = None
-        self.is_fan      = False
-        self.game_cfg    = {}
-        self.game_data   = None
-        self.game_over   = None
-        self.online_list = []
-        self.ready_list  = []    # usernames currently ready
-        self.i_am_ready  = False
-        self.chat_log    = []
-        self._chat_colors = {}   # username -> color
-        self.cheers      = []
-        self.particles   = []
-        self.conn_msg    = ""
-        self.conn_ok     = False
-        self.last_dir    = None
-        self._t          = 0.0
-        self.countdown   = None
-        self._cd_t       = 0.0   # time when countdown last changed
+        self.net=None; self.q=queue.Queue()
+        self.state=S_CONNECT
+        self.username=None; self.pid=None; self.is_fan=False
+        self.gdata=None; self.gover=None
+        self.lobby_list=[]; self.ready_list=[]
+        self.i_ready=False
+        self.chat_log=[]; self._ucols={}
+        self.cheers=[]
+        self.sparks=[]
+        self._t=0.
+        self.countdown=None; self._cd_t=0.
+        self.conn_msg=""; self.conn_ok=False
+        self._dmg_flash=[0.,0.]
+        self._prev_hp=[None,None]
+        self._shake=0.; self._shake_off=(0,0)
+        self._score_anim=[0.,0.]
 
-        self.key_map = {
-            pygame.K_UP:"UP", pygame.K_DOWN:"DOWN",
-            pygame.K_LEFT:"LEFT", pygame.K_RIGHT:"RIGHT",
-            pygame.K_w:"UP", pygame.K_s:"DOWN",
-            pygame.K_a:"LEFT", pygame.K_d:"RIGHT",
+        self.key_map={
+            pygame.K_UP:"UP",pygame.K_DOWN:"DOWN",
+            pygame.K_LEFT:"LEFT",pygame.K_RIGHT:"RIGHT",
+            pygame.K_w:"UP",pygame.K_s:"DOWN",
+            pygame.K_a:"LEFT",pygame.K_d:"RIGHT",
         }
+        self._build()
 
-        self._build_ui()
-
-    def _build_ui(self):
-        cx = WIN_W//2
-        self.inp_host = TextInput(pygame.Rect(cx-170, 292, 340, 42), self.F, "Server IP  e.g. 127.0.0.1", 64)
-        self.inp_port = TextInput(pygame.Rect(cx-170, 370, 150, 42), self.F, "Port", 6)
-        self.inp_user = TextInput(pygame.Rect(cx-170, 448, 340, 42), self.F, "Username", 20)
-        self.inp_host.text = "127.0.0.1"
-        self.inp_port.text = "5555"
-        self.btn_connect = Button(pygame.Rect(cx-105, 518, 210, 46), "Connect", self.F, ACCENT)
-        self._cinputs = [self.inp_host, self.inp_port, self.inp_user]
-
-        sx = GRID_W*CELL
-        self.chat_inp    = TextInput(pygame.Rect(sx+6, WIN_H-44, SIDEBAR-12, 36), self.F, "Chat  (/pm user msg)", 150)
-        self.btn_rematch = Button(pygame.Rect(100, 100, 210, 48), "Rematch",      self.F, P0_HEAD, BG)
-        self.btn_lobby   = Button(pygame.Rect(100, 100, 210, 48), "Back to Lobby",self.F, PANEL_BG, TEXT)
-        self.btn_watch   = Button(pygame.Rect(100, 100, 220, 42), "Watch as Fan", self.F, (45,50,80), TEXT)
-        self.btn_ready   = Button(pygame.Rect(100, 100, 220, 48), "Ready Up",     self.F, P0_HEAD,   BG)
-
-        self.cheer_labels = ["fire", "skull", "crown", "gg", "hype"]
-        self.cheer_colors = [(220,90,40),(180,180,190),(220,180,30),(50,180,120),(80,150,255)]
+    def _build(self):
+        cx=WIN_W//2
+        self.inp_host=Inp(pygame.Rect(cx-190,308,380,48),self.F,"Server IP  (e.g. 127.0.0.1)",64)
+        self.inp_port=Inp(pygame.Rect(cx-190,388,170,48),self.F,"Port",6)
+        self.inp_user=Inp(pygame.Rect(cx-190,468,380,48),self.F,"Username",20)
+        self.inp_host.text="127.0.0.1"; self.inp_port.text="5555"
+        self._cinp=[self.inp_host,self.inp_port,self.inp_user]
+        self.btn_conn=Btn(pygame.Rect(cx-120,542,240,52),"Connect",self.F,ACCENT,BG)
+        sx=GRID_W*CELL
+        self.chat_inp=Inp(pygame.Rect(sx+10,WIN_H-50,SIDEBAR-20,40),self.F,"Send a message...",150)
+        self.btn_ready=Btn(pygame.Rect(100,100,240,54),"Ready Up",self.F,P0,BG)
+        self.btn_watch=Btn(pygame.Rect(100,100,210,44),"Watch as Fan",self.F,PANEL2,GRAY,BORDER)
+        self.btn_rematch=Btn(pygame.Rect(100,100,220,54),"Rematch",self.F,P0,BG)
+        self.btn_lobby=Btn(pygame.Rect(100,100,220,54),"Back to Lobby",self.F,PANEL2,OFFWHITE,BORDER)
 
     # ── Loop ──────────────────────────────────────────────────────────────────
     def run(self):
         while True:
-            dt = self.clock.tick(FPS)/1000.0
-            self._t += dt
-            while not self.recv_q.empty():
-                self._on_msg(self.recv_q.get_nowait())
-            self._handle_events()
-            self.particles = [p for p in self.particles if p.update()]
+            dt=self.clock.tick(FPS)/1000.
+            self._t+=dt
+            # Decay effects
+            self._shake=max(0.,self._shake-dt*8)
+            for i in range(2): self._dmg_flash[i]=max(0.,self._dmg_flash[i]-dt*3)
+            if self._shake>0:
+                ang=random.uniform(0,math.tau)
+                amp=self._shake*7
+                self._shake_off=(int(math.cos(ang)*amp),int(math.sin(ang)*amp))
+            else: self._shake_off=(0,0)
+
+            while not self.q.empty(): self._on(self.q.get_nowait())
+            self._events()
+            self.sparks=[s for s in self.sparks if s.tick()]
             self._draw()
             pygame.display.flip()
 
     # ── Messages ──────────────────────────────────────────────────────────────
-    def _on_msg(self, msg):
-        t = msg.get("type")
-        if t == "_NET_ERROR":
-            self.conn_msg = msg.get("reason","Network error")
-            self.conn_ok  = False
-            self.state    = S_CONNECT
-        elif t == MSG_JOIN_OK:
-            self.username = msg["username"]
-            self.state    = S_LOBBY
-        elif t == MSG_JOIN_ERR:
-            self.conn_msg = msg.get("reason","Error")
-            self.conn_ok  = False
-        elif t == MSG_PLAYER_LIST:
-            self.online_list = msg.get("players",[])
-        elif t == MSG_READY_STATUS:
-            self.ready_list = msg.get("ready", [])
-            self.i_am_ready = self.username in self.ready_list
-        elif t == MSG_GAME_START:
-            self.player_id  = msg.get("your_id")
-            self.is_fan     = False
-            self.state      = S_GAME
-            self.game_over  = None
-            self.game_data  = None
-            self.countdown  = None
-        elif t == MSG_COUNTDOWN:
-            self.countdown = msg.get("count")
-            self._cd_t     = self._t
-        elif t == MSG_WATCH_OK:
-            self.is_fan = True
-            self.state  = S_GAME
-            self.game_over = None
-        elif t == MSG_GAME_STATE:
-            self.game_data = msg
-        elif t == MSG_GAME_OVER:
-            self.game_over = msg
-            self.state     = S_GAME_OVER
-            if msg.get("winner") == self.username:
-                gcx = (GRID_W*CELL)//2
-                for _ in range(50):
-                    self.particles.append(Particle(
-                        gcx + random.randint(-120,120),
-                        WIN_H//2 + random.randint(-80,80),
-                        P0_HEAD if self.player_id==0 else P1_HEAD))
-        elif t == MSG_CHAT_RECV:
-            s   = msg.get("from","?")
-            tx  = msg.get("text","")
-            prv = msg.get("private",False)
-            if s not in self._chat_colors:
-                self._chat_colors[s] = CHAT_COLORS[len(self._chat_colors) % len(CHAT_COLORS)]
-            col = self._chat_colors[s]
-            self.chat_log.append((s, ("[PM] " if prv else "")+tx, col))
-            if len(self.chat_log) > 80: self.chat_log.pop(0)
-        elif t == MSG_CHEER_RECV:
+    def _on(self,msg):
+        t=msg.get("type")
+        if t=="_ERR":
+            self.conn_msg=msg.get("reason","Error"); self.conn_ok=False; self.state=S_CONNECT
+        elif t==MSG_JOIN_OK:
+            self.username=msg["username"]; self.state=S_LOBBY
+        elif t==MSG_JOIN_ERR:
+            self.conn_msg=msg.get("reason","Error"); self.conn_ok=False
+        elif t==MSG_PLAYER_LIST:
+            self.lobby_list=msg.get("players",[])
+        elif t==MSG_READY_STATUS:
+            self.ready_list=msg.get("ready",[]); self.i_ready=self.username in self.ready_list
+        elif t==MSG_GAME_START:
+            self.pid=msg.get("your_id"); self.is_fan=False
+            self.state=S_GAME; self.gover=None; self.gdata=None
+            self.countdown=None; self._prev_hp=[None,None]
+        elif t==MSG_WATCH_OK:
+            self.is_fan=True; self.state=S_GAME; self.gover=None
+        elif t==MSG_GAME_STATE:
+            if self.gdata:
+                for i,sn in enumerate(msg.get("snakes",[])):
+                    old=self._prev_hp[i]; new=sn.get("health",0)
+                    if old is not None and new<old:
+                        self._dmg_flash[i]=1.0; self._shake=min(1.,self._shake+0.6)
+                        body=sn.get("body",[])
+                        if body:
+                            hx,hy=body[0]
+                            sx2=hx*CELL+CELL//2; sy2=hy*CELL+TOP_H+CELL//2
+                            col=[P0,P1][i]
+                            burst(self.sparks,sx2,sy2,col,n=16,spd_range=(2,5),sz_range=(3,6))
+                            burst(self.sparks,sx2,sy2,WHITE,n=6,spd_range=(1,3),sz_range=(2,4))
+                    self._prev_hp[i]=new
+            self.gdata=msg
+        elif t==MSG_COUNTDOWN:
+            self.countdown=msg.get("count"); self._cd_t=self._t
+        elif t==MSG_GAME_OVER:
+            self.gover=msg; self.state=S_OVER
+            winner=msg.get("winner","")
+            gcx=(GRID_W*CELL)//2
+            if winner==self.username:
+                for _ in range(80):
+                    burst(self.sparks,
+                        gcx+random.randint(-200,200),
+                        WIN_H//2+random.randint(-120,120),
+                        random.choice([P0,GOLD,GREEN_C,ACCENT,WHITE]),
+                        n=1,spd_range=(2,7),sz_range=(3,9))
+        elif t==MSG_CHAT_RECV:
+            s=msg.get("from","?"); tx=msg.get("text",""); prv=msg.get("private",False)
+            if s not in self._ucols:
+                self._ucols[s]=CHAT_COLORS[len(self._ucols)%len(CHAT_COLORS)]
+            self.chat_log.append((s,("[PM] " if prv else "")+tx,self._ucols[s]))
+            if len(self.chat_log)>100: self.chat_log.pop(0)
+        elif t==MSG_CHEER_RECV:
             self.cheers.append((
                 f"{msg.get('from','?')}: {msg.get('emoji','!')} for {msg.get('player','')}!",
-                time.time()+3.5))
+                time.time()+4))
 
     # ── Events ────────────────────────────────────────────────────────────────
-    def _handle_events(self):
+    def _events(self):
         for ev in pygame.event.get():
-            if ev.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if self.state == S_CONNECT:
-                for inp in self._cinputs:
-                    if inp.handle_event(ev): self._do_connect()
-                if self.btn_connect.handle_event(ev): self._do_connect()
-            elif self.state == S_LOBBY:
-                if self.btn_watch.handle_event(ev) and self.net:
-                    self.net.send({"type": MSG_WATCH})
-                if self.btn_ready.handle_event(ev) and self.net:
-                    if self.i_am_ready:
-                        self.net.send({"type": MSG_UNREADY})
-                        self.i_am_ready = False
-                    else:
-                        self.net.send({"type": MSG_READY})
-                        self.i_am_ready = True
-            elif self.state == S_GAME:
-                if self.chat_inp.handle_event(ev):
-                    self._send_chat()
-                if ev.type == pygame.MOUSEBUTTONDOWN and self.is_fan:
-                    for i in range(len(self.cheer_labels)):
-                        if self._cheer_rect(i).collidepoint(ev.pos) and self.game_data:
-                            unames = self.game_data.get("usernames",[])
-                            if unames:
-                                self.net.send({"type":MSG_CHEER,"emoji":self.cheer_labels[i],"player":unames[0]})
-                if ev.type == pygame.KEYDOWN and not self.is_fan and not self.chat_inp.active:
-                    d = self.key_map.get(ev.key)
-                    if d and self.net:
-                        self.net.send({"type":MSG_INPUT,"direction":d})
-            elif self.state == S_GAME_OVER:
-                self.chat_inp.handle_event(ev)
-                if ev.type == pygame.KEYDOWN and ev.key == pygame.K_RETURN:
-                    self._send_chat()
-                if self.btn_rematch.handle_event(ev) and self.net:
-                    self.net.send({"type":MSG_REMATCH})
-                if self.btn_lobby.handle_event(ev) and self.net:
-                    self.net.send({"type":MSG_LEAVE})
-                    self._to_lobby()
+            if ev.type==pygame.QUIT: pygame.quit(); sys.exit()
+            if self.state==S_CONNECT:
+                for inp in self._cinp:
+                    if inp.on_event(ev): self._connect()
+                if self.btn_conn.on_event(ev): self._connect()
+            elif self.state==S_LOBBY:
+                if self.btn_watch.on_event(ev) and self.net: self.net.send({"type":MSG_WATCH})
+                if self.btn_ready.on_event(ev) and self.net:
+                    if self.i_ready: self.net.send({"type":MSG_UNREADY}); self.i_ready=False
+                    else: self.net.send({"type":MSG_READY}); self.i_ready=True
+            elif self.state==S_GAME:
+                if self.chat_inp.on_event(ev): self._chat()
+                if ev.type==pygame.KEYDOWN and not self.is_fan and not self.chat_inp.active:
+                    d=self.key_map.get(ev.key)
+                    if d and self.net: self.net.send({"type":MSG_INPUT,"direction":d})
+            elif self.state==S_OVER:
+                self.chat_inp.on_event(ev)
+                if ev.type==pygame.KEYDOWN and ev.key==pygame.K_RETURN: self._chat()
+                if self.btn_rematch.on_event(ev) and self.net: self.net.send({"type":MSG_REMATCH})
+                if self.btn_lobby.on_event(ev) and self.net:
+                    self.net.send({"type":MSG_LEAVE}); self._to_lobby()
 
-    def _send_chat(self):
-        txt = self.chat_inp.text.strip()
+    def _chat(self):
+        txt=self.chat_inp.text.strip()
         if txt and self.net:
             if txt.startswith("/pm "):
-                parts = txt[4:].split(" ",1)
-                if len(parts)==2:
-                    self.net.send({"type":MSG_CHAT,"to":parts[0],"text":parts[1]})
-            else:
-                self.net.send({"type":MSG_CHAT,"to":None,"text":txt})
-        self.chat_inp.text = ""
+                p=txt[4:].split(" ",1)
+                if len(p)==2: self.net.send({"type":MSG_CHAT,"to":p[0],"text":p[1]})
+            else: self.net.send({"type":MSG_CHAT,"to":None,"text":txt})
+        self.chat_inp.text=""
 
-    def _do_connect(self):
-        host  = self.inp_host.text.strip()
-        port  = self.inp_port.text.strip()
-        uname = self.inp_user.text.strip()
-        if not host or not port or not uname:
-            self.conn_msg = "Please fill in all fields."; self.conn_ok = False; return
-        try: port_n = int(port)
-        except ValueError:
-            self.conn_msg = "Port must be a number."; self.conn_ok = False; return
-        self.conn_msg = "Connecting..."; self.conn_ok = True
-        self.net = NetworkThread(host, port_n, self.recv_q)
-        self.net.start()
-        def _join():
-            time.sleep(0.35)
-            self.net.send({"type":MSG_JOIN,"username":uname})
-        threading.Thread(target=_join, daemon=True).start()
+    def _connect(self):
+        host=self.inp_host.text.strip(); port=self.inp_port.text.strip(); user=self.inp_user.text.strip()
+        if not host or not port or not user: self.conn_msg="Fill in all fields."; self.conn_ok=False; return
+        try: pn=int(port)
+        except: self.conn_msg="Invalid port."; self.conn_ok=False; return
+        self.conn_msg="Connecting..."; self.conn_ok=True
+        self.net=Net(host,pn,self.q); self.net.start()
+        def _j(): time.sleep(0.35); self.net.send({"type":MSG_JOIN,"username":user})
+        threading.Thread(target=_j,daemon=True).start()
 
     def _to_lobby(self):
-        self.state = S_LOBBY; self.game_data = None
-        self.game_over = None; self.player_id = None
-        self.is_fan = False; self.countdown = None
-        self.i_am_ready = False; self.ready_list = []
+        self.state=S_LOBBY; self.gdata=None; self.gover=None
+        self.pid=None; self.is_fan=False; self.countdown=None
+        self.i_ready=False; self.ready_list=[]
 
     # ── Draw ──────────────────────────────────────────────────────────────────
     def _draw(self):
-        self.screen.fill(BG)
-        if   self.state == S_CONNECT:   self._draw_connect()
-        elif self.state == S_LOBBY:     self._draw_lobby()
-        elif self.state in (S_GAME, S_GAME_OVER):
-            self._draw_game()
-            if self.countdown is not None and self.countdown > 0:
-                self._draw_countdown()
-            elif self.state == S_GAME_OVER:
-                self._draw_gameover()
-        for p in self.particles: p.draw(self.screen)
+        surf=self.screen
+        surf.fill(BG)
+        off=self._shake_off
 
-    # ── Connect ───────────────────────────────────────────────────────────────
-    def _draw_connect(self):
-        cx = WIN_W//2
-        t  = self._t
+        if self.state==S_CONNECT:   self._d_connect(surf)
+        elif self.state==S_LOBBY:   self._d_lobby(surf)
+        elif self.state in(S_GAME,S_OVER):
+            # Apply shake offset to game area only
+            if off!=(0,0):
+                tmp=pygame.Surface((GRID_W*CELL,WIN_H))
+                tmp.fill(BG)
+                self._d_game(tmp,0,0)
+                surf.blit(tmp,off)
+            else:
+                self._d_game(surf,0,0)
+            self._d_sidebar(surf)
+            self._d_topbar(surf)
+            if self.countdown is not None and self.countdown>0:
+                self._d_countdown(surf)
+            elif self.state==S_OVER:
+                self._d_over(surf)
 
-        # Animated background grid
-        for gx in range(0, WIN_W+40, 40):
-            a = int(14 + 7*math.sin(t*0.5 + gx*0.04))
-            pygame.draw.line(self.screen, (GRID_LINE[0], GRID_LINE[1], GRID_LINE[2]), (gx, 0), (gx, WIN_H))
-        for gy in range(0, WIN_H+40, 40):
-            a = int(14 + 7*math.sin(t*0.5 + gy*0.04))
-            pygame.draw.line(self.screen, GRID_LINE, (0, gy), (WIN_W, gy))
+        # Particles always on top
+        for s in self.sparks: s.draw(surf)
 
-        # Animated snake decorations
+        # Scanlines for CRT feel
+        surf.blit(get_scanlines(WIN_W,WIN_H),(0,0))
+
+    # ── Connect screen ─────────────────────────────────────────────────────────
+    def _d_connect(self,surf):
+        t=self._t; cx=WIN_W//2
+
+        # Animated hex grid background
+        hex_size=40
+        for row in range(-1, WIN_H//hex_size+2):
+            for col2 in range(-1, WIN_W//(hex_size)+2):
+                hx=col2*hex_size*1.15+(row%2)*hex_size*0.575
+                hy=row*hex_size*0.95
+                dist=math.sqrt((hx-cx)**2+(hy-WIN_H//2)**2)
+                pulse=math.sin(t*1.2-dist*0.025)
+                a=max(0,int(12+10*pulse))
+                pts=[(hx+hex_size*0.5*math.cos(math.radians(60*i+30)),
+                      hy+hex_size*0.5*math.sin(math.radians(60*i+30))) for i in range(6)]
+                pts=[(int(x),int(y)) for x,y in pts]
+                try: pygame.draw.polygon(surf,(*BORDER,a),pts,1)
+                except: pass
+
+        # Neon snake decorations
         for side in range(2):
-            col = P0_HEAD if side==0 else P1_HEAD
-            for i in range(8):
-                px = (80 + i*30) if side==0 else (WIN_W - 80 - i*30)
-                py = int(WIN_H//2 + 55*math.sin(t*1.6 + i*0.7 + side*math.pi))
-                a  = max(0, 220 - i*26)
-                sz = max(4, 22 - i*2)
-                s  = pygame.Surface((sz, sz), pygame.SRCALPHA)
-                s.fill((*col, a))
-                self.screen.blit(s, (px-sz//2, py-sz//2))
+            col2=P0 if side==0 else P1
+            glw=P0_GLOW if side==0 else P1_GLOW
+            for i in range(12):
+                frac=i/12
+                px=(55+i*28) if side==0 else (WIN_W-55-i*28)
+                py=int(WIN_H//2+55*math.sin(t*1.6+i*0.6+side*math.pi))
+                a=max(0,240-i*20); sz=max(4,22-i*2)
+                if i==0:
+                    glow_circle(surf,glw,(px,py),sz//2+2,10,50)
+                s2=pygame.Surface((sz,sz),pygame.SRCALPHA)
+                s2.fill((*col2,a)); surf.blit(s2,(px-sz//2,py-sz//2))
 
         # Card
-        card = pygame.Rect(cx-210, 230, 420, 360)
-        cs = pygame.Surface((card.w, card.h), pygame.SRCALPHA)
-        cs.fill((14, 16, 28, 235))
-        self.screen.blit(cs, card.topleft)
-        rrb(self.screen, BORDER, card, 14, 1)
-        # Top accent line
-        pulse = int(128 + 120*math.sin(t*1.5))
-        acc_col = (int(ACCENT[0]*pulse/255), int(ACCENT[1]*pulse/255), int(ACCENT[2]*pulse/255))
-        pygame.draw.rect(self.screen, acc_col, (card.x+2, card.y, card.w-4, 3), border_radius=14)
+        cw,ch=460,400
+        card=pygame.Rect(cx-cw//2,230,cw,ch)
+        cs=pygame.Surface((cw,ch),pygame.SRCALPHA); cs.fill((8,10,20,245))
+        surf.blit(cs,card.topleft)
+        # Animated neon border
+        pulse=0.5+0.5*math.sin(t*2.0)
+        top_col=lrp(ACCENT,P0,pulse)
+        pygame.draw.rect(surf,top_col,(card.x,card.y,cw,3),border_radius=14)
+        pygame.draw.rect(surf,(*BORDER,160),card,1,border_radius=14)
+        # Corner accents
+        for corner_x,corner_y in[(card.x,card.y),(card.right-20,card.y),(card.x,card.bottom-3),(card.right-20,card.bottom-3)]:
+            pygame.draw.line(surf,top_col,(corner_x,card.y),(corner_x+18,card.y),2)
 
         # Title
-        title = self.F["title"].render("PITHON ARENA", True, P0_HEAD)
-        self.screen.blit(title, (cx - title.get_width()//2, 148))
-        sub = self.F["small"].render("Real-time Online Snake Battle  |  EECE 350", True, TEXT_DIM)
-        self.screen.blit(sub, (cx - sub.get_width()//2, 200))
+        title=self.F["title"].render("PITHON  ARENA",True,WHITE)
+        glow_rect(surf,P0,pygame.Rect(cx-title.get_width()//2-10,152,title.get_width()+20,title.get_height()+4),8,16,20)
+        surf.blit(title,(cx-title.get_width()//2,154))
+        sub=self.F["sm"].render("Real-time Online Snake Battle  |  EECE 350",True,GRAY)
+        surf.blit(sub,(cx-sub.get_width()//2,204))
 
-        self.inp_host.draw(self.screen, "Server IP Address")
-        self.inp_port.draw(self.screen, "Port")
-        self.inp_user.draw(self.screen, "Username")
-        self.btn_connect.draw(self.screen)
+        self.inp_host.draw(surf,"Server IP Address")
+        self.inp_port.draw(surf,"Port")
+        self.inp_user.draw(surf,"Username")
+        self.btn_conn.draw(surf)
 
         if self.conn_msg:
-            col = GREEN_OK if self.conn_ok else RED_ERR
-            mt = self.F["small"].render(self.conn_msg, True, col)
-            self.screen.blit(mt, (cx - mt.get_width()//2, 574))
+            col2=GREEN_C if self.conn_ok else RED_C
+            dots="."*(int(t*3)%4) if self.conn_ok else ""
+            mt=self.F["body"].render(self.conn_msg+dots,True,col2)
+            surf.blit(mt,(cx-mt.get_width()//2,606))
 
-        hint = self.F["tiny"].render("Controls: WASD or Arrow Keys   |   Private chat: /pm username message", True, TEXT_DIM)
-        self.screen.blit(hint, (cx - hint.get_width()//2, WIN_H-20))
+        hint=self.F["xs"].render("WASD or Arrow Keys to move   |   /pm username message for private chat",True,DIMGRAY)
+        surf.blit(hint,(cx-hint.get_width()//2,WIN_H-22))
 
-    # ── Lobby ─────────────────────────────────────────────────────────────────
-    def _draw_lobby(self):
-        cx = WIN_W//2
+    # ── Lobby screen ───────────────────────────────────────────────────────────
+    def _d_lobby(self,surf):
+        t=self._t; cx=WIN_W//2
 
-        # Header
-        pygame.draw.rect(self.screen, PANEL_BG, (0,0,WIN_W,64))
-        pygame.draw.line(self.screen, BORDER, (0,64),(WIN_W,64))
-        t1 = self.F["h1"].render("PITHON ARENA", True, P0_HEAD)
-        self.screen.blit(t1, (20, 16))
-        u = self.F["body"].render(f"Logged in as   {self.username}", True, ACCENT)
-        self.screen.blit(u, (WIN_W - u.get_width()-20, 20))
+        # Animated background — slow moving dots
+        for i in range(30):
+            random.seed(i*997)
+            bx=random.randint(0,WIN_W); by=random.randint(0,WIN_H)
+            spd=random.uniform(0.2,0.8); phase=random.uniform(0,math.tau)
+            a=int(25+20*math.sin(t*spd+phase))
+            aac(surf,(*DIMGRAY,a),(bx,by),2)
+        random.seed(int(t*1000))  # re-seed to random for game logic
+
+        # Header bar
+        hbar=pygame.Surface((WIN_W,72),pygame.SRCALPHA); hbar.fill((8,10,20,255))
+        surf.blit(hbar,(0,0))
+        # Neon accent line at bottom of header
+        for px2 in range(WIN_W):
+            a=int(120*(0.5+0.5*math.sin(px2*0.015+t*2.0)))
+            c=lrp(ACCENT,P0,px2/WIN_W)
+            pygame.draw.line(surf,(*c,a),(px2,71),(px2,72))
+
+        title=self.F["h1"].render("PITHON  ARENA",True,WHITE)
+        surf.blit(title,(22,20))
+        if self.username:
+            u=self.F["body"].render(f"Signed in as  {self.username}",True,ACCENT)
+            surf.blit(u,(WIN_W-u.get_width()-22,26))
 
         # Players panel
-        panel = pygame.Rect(cx-240, 84, 480, 300)
-        rr(self.screen, PANEL_BG, panel, 12)
-        rrb(self.screen, BORDER, panel, 12, 1)
+        pw,ph=520,290
+        panel=pygame.Rect(cx-pw//2,88,pw,ph)
+        ps=pygame.Surface((pw,ph),pygame.SRCALPHA); ps.fill((8,10,20,240))
+        surf.blit(ps,panel.topleft)
+        rrb(surf,BORDER,panel,12,1)
 
-        hdr = self.F["h2"].render("Online Players", True, TEXT_BRIGHT)
-        self.screen.blit(hdr, (panel.x+18, panel.y+14))
-        pygame.draw.line(self.screen, BORDER, (panel.x+14, panel.y+46),(panel.right-14, panel.y+46))
+        ht=self.F["h2"].render("Online Players",True,WHITE)
+        surf.blit(ht,(panel.x+20,panel.y+16))
+        pygame.draw.line(surf,BORDER,(panel.x+14,panel.y+50),(panel.right-14,panel.y+50),1)
 
-        if not self.online_list:
-            wt = self.F["body"].render("No other players yet...", True, TEXT_DIM)
-            self.screen.blit(wt, (panel.centerx - wt.get_width()//2, panel.y+90))
+        if not self.lobby_list:
+            wt=self.F["body"].render("No players connected yet...",True,DIMGRAY)
+            surf.blit(wt,(panel.centerx-wt.get_width()//2,panel.y+100))
         else:
-            for i, name in enumerate(self.online_list[:7]):
-                ry = panel.y + 54 + i*33
-                is_me = name == self.username
-                if is_me:
-                    rr(self.screen, (28,33,60), pygame.Rect(panel.x+10, ry, panel.w-20, 28), 6)
-                aa_circle(self.screen, P0_HEAD if is_me else GREEN_OK, (panel.x+28, ry+14), 5)
-                nt = self.F["body"].render(name + ("  (you)" if is_me else ""), True, P0_HEAD if is_me else TEXT)
-                self.screen.blit(nt, (panel.x+44, ry+4))
+            for i,name in enumerate(self.lobby_list[:6]):
+                ry=panel.y+58+i*38; is_me=name==self.username; is_rdy=name in self.ready_list
+                # Row
+                rbg=(20,26,55) if is_me else (12,14,28)
+                rr(surf,rbg,pygame.Rect(panel.x+8,ry,pw-16,32),7)
+                if is_me: rrb(surf,P0,pygame.Rect(panel.x+8,ry,pw-16,32),7,1)
+                # Status dot
+                dc=P0 if is_rdy else ACCENT
+                aac(surf,dc,(panel.x+26,ry+16),6)
+                if is_rdy: glow_circle(surf,dc,(panel.x+26,ry+16),6,8,40)
+                # Name
+                nc=WHITE if is_me else OFFWHITE
+                nt=self.F["body"].render(name+("  (you)" if is_me else ""),True,nc)
+                surf.blit(nt,(panel.x+44,ry+6))
+                # Ready badge
+                if is_rdy:
+                    rb=self.F["xs"].render("READY",True,GOLD)
+                    rbr=pygame.Rect(panel.right-70,ry+7,58,18)
+                    rr(surf,(40,32,0),rbr,4); rrb(surf,GOLD,rbr,4,1)
+                    surf.blit(rb,(rbr.centerx-rb.get_width()//2,rbr.centery-rb.get_height()//2))
 
-        # Status message
-        dots = "." * (int(self._t*2)%4)
-        ready_count = len(self.ready_list)
-        if self.i_am_ready:
-            wt = self.F["body"].render(f"You are ready!  ({ready_count}/2 ready{dots})", True, GREEN_OK)
-        elif ready_count > 0:
-            wt = self.F["body"].render(f"{ready_count}/2 players ready - click to join!", True, GOLD)
+        # Status
+        rc=len(self.ready_list); dots="."*(int(t*2)%4)
+        if self.i_ready:   st=self.F["body"].render(f"You are ready!  ({rc}/2 ready{dots})",True,GREEN_C)
+        elif rc>0:         st=self.F["body"].render(f"{rc}/2 ready - click Ready Up to join!",True,GOLD)
+        else:              st=self.F["body"].render(f"Waiting for players to ready up{dots}",True,GRAY)
+        surf.blit(st,(cx-st.get_width()//2,panel.bottom+18))
+
+        # Ready button
+        self.btn_ready.rect=pygame.Rect(cx-120,panel.bottom+52,240,54)
+        if self.i_ready:
+            self.btn_ready.text="Cancel Ready"; self.btn_ready.bg=(50,14,20); self.btn_ready.fg=RED_C; self.btn_ready.outline=RED_C
         else:
-            wt = self.F["body"].render(f"Waiting for players to ready up{dots}", True, TEXT_DIM)
-        self.screen.blit(wt, (cx - wt.get_width()//2, panel.bottom+14))
+            self.btn_ready.text="Ready Up"; self.btn_ready.bg=P0; self.btn_ready.fg=BG; self.btn_ready.outline=None
+        self.btn_ready.draw(surf)
 
-        # Ready Up / Cancel Ready button
-        self.btn_ready.rect = pygame.Rect(cx-110, panel.bottom+46, 220, 48)
-        if self.i_am_ready:
-            self.btn_ready.text = "Cancel Ready"
-            self.btn_ready.bg   = (60, 40, 40)
-            self.btn_ready.fg   = RED_ERR
-        else:
-            self.btn_ready.text = "Ready Up"
-            self.btn_ready.bg   = P0_HEAD
-            self.btn_ready.fg   = BG
-        self.btn_ready.draw(self.screen)
+        # Who is ready
+        for i,name in enumerate(self.ready_list[:2]):
+            col2=[P0,P1][i]
+            glow_rect(surf,col2,pygame.Rect(cx-130,panel.bottom+118+i*30,260,26),6,8,18)
+            rt=self.F["sm"].render(f"{name} is ready!",True,col2)
+            surf.blit(rt,(cx-rt.get_width()//2,panel.bottom+120+i*30))
 
-        # Ready list — show who is ready
-        if self.ready_list:
-            for i, name in enumerate(self.ready_list[:2]):
-                col = P0_HEAD if i == 0 else P1_HEAD
-                rt = self.F["small"].render(f"  {name} is ready!", True, col)
-                self.screen.blit(rt, (cx - rt.get_width()//2, panel.bottom+104+i*20))
+        # Watch button
+        self.btn_watch.rect=pygame.Rect(cx-100,panel.bottom+186,200,42)
+        self.btn_watch.draw(surf)
+        wh=self.F["xs"].render("Watch an ongoing match as spectator",True,DIMGRAY)
+        surf.blit(wh,(cx-wh.get_width()//2,panel.bottom+236))
 
-        # Watch button below
-        self.btn_watch.rect = pygame.Rect(cx-90, panel.bottom+148, 180, 36)
-        self.btn_watch.draw(self.screen)
-        ht = self.F["small"].render("Spectate an ongoing match", True, TEXT_DIM)
-        self.screen.blit(ht, (cx - ht.get_width()//2, panel.bottom+192))
+        hint=self.F["xs"].render("Move: WASD or Arrow Keys     Private: /pm username message",True,DIMGRAY)
+        surf.blit(hint,(cx-hint.get_width()//2,WIN_H-22))
 
-        k = self.F["tiny"].render("Move: WASD or Arrow Keys     Private chat: /pm username message", True, TEXT_DIM)
-        self.screen.blit(k, (cx - k.get_width()//2, WIN_H-20))
-
-    # ── Game ──────────────────────────────────────────────────────────────────
-    def _draw_game(self):
-        gd = self.game_data
-
-        # Checkerboard grid
+    # ── Game screen ───────────────────────────────────────────────────────────
+    def _d_game(self,surf,ox,oy):
+        gd=self.gdata
+        # Grid
         for x in range(GRID_W):
             for y in range(GRID_H):
-                col = GRID_DARK if (x+y)%2==0 else (18,20,34)
-                pygame.draw.rect(self.screen, col, (x*CELL, y*CELL+TOP_H, CELL, CELL))
+                c=GRID_A if(x+y)%2==0 else GRID_B
+                pygame.draw.rect(surf,c,(x*CELL+ox,y*CELL+TOP_H+oy,CELL,CELL))
         for x in range(GRID_W+1):
-            pygame.draw.line(self.screen, GRID_LINE, (x*CELL,TOP_H),(x*CELL,TOP_H+GRID_H*CELL))
+            pygame.draw.line(surf,GRID_LINE,(x*CELL+ox,TOP_H+oy),(x*CELL+ox,TOP_H+GRID_H*CELL+oy))
         for y in range(GRID_H+1):
-            pygame.draw.line(self.screen, GRID_LINE, (0,y*CELL+TOP_H),(GRID_W*CELL,y*CELL+TOP_H))
-        pygame.draw.rect(self.screen, WALL_C, (0,TOP_H,GRID_W*CELL,GRID_H*CELL), 3)
+            pygame.draw.line(surf,GRID_LINE,(ox,y*CELL+TOP_H+oy),(GRID_W*CELL+ox,y*CELL+TOP_H+oy))
+        # Damage flash
+        for i,fl in enumerate(self._dmg_flash):
+            if fl>0:
+                col=[P0,P1][i]
+                ov=pygame.Surface((GRID_W*CELL,GRID_H*CELL),pygame.SRCALPHA)
+                ov.fill((*col,int(50*fl))); surf.blit(ov,(ox,TOP_H+oy))
+        # Wall — glowing
+        wc=lrp(WALL_C,WHITE,0.1)
+        pygame.draw.rect(surf,wc,(ox,TOP_H+oy,GRID_W*CELL,GRID_H*CELL),3)
+        glow_rect(surf,ACCENT,pygame.Rect(ox,TOP_H+oy,GRID_W*CELL,GRID_H*CELL),0,4,15)
 
         if gd:
-            self._draw_obstacles(gd)
-            self._draw_pies(gd)
-            self._draw_snakes(gd)
-
-        self._draw_topbar(gd)
-        self._draw_sidebar(gd)
+            self._d_obs(surf,gd,ox,oy)
+            self._d_pies(surf,gd,ox,oy)
+            self._d_snakes(surf,gd,ox,oy)
 
         # Cheer toasts
-        now = time.time()
-        self.cheers = [(tx,ex) for tx,ex in self.cheers if ex>now]
-        for i,(tx,ex) in enumerate(self.cheers[-5:]):
-            fade = min(1.0,(ex-now)/1.0)
-            col  = lerp(BG, CHEER_C, fade)
-            ct   = self.F["body"].render(tx, True, col)
-            self.screen.blit(ct, (14, WIN_H-115-i*28))
+        now=time.time()
+        self.cheers=[(tx,ex) for tx,ex in self.cheers if ex>now]
+        for i,(tx,ex) in enumerate(self.cheers[-4:]):
+            fade=min(1.,(ex-now)/1.5)
+            br=pygame.Rect(8,WIN_H-130-i*36,len(tx)*9+20,30)
+            ts=pygame.Surface((br.width,br.height),pygame.SRCALPHA)
+            ts.fill((*PANEL2,int(210*fade))); surf.blit(ts,br.topleft)
+            ct=self.F["sm"].render(tx,True,(*CHEER_C[:3],int(255*fade)))
+            surf.blit(ct,(br.x+10,br.y+6))
 
-    def _draw_obstacles(self, gd):
+    def _d_obs(self,surf,gd,ox,oy):
         for obs in gd.get("obstacles",[]):
-            ox,oy = obs["pos"]
-            kind  = obs.get("kind","rock")
-            col   = OBS_ROCK if kind=="rock" else OBS_SPIKE
-            r = pygame.Rect(ox*CELL+2, oy*CELL+TOP_H+2, CELL-4, CELL-4)
-            rr(self.screen, col, r, 4)
-            cx2, cy2 = r.centerx, r.centery
-            if kind == "rock":
-                aa_circle(self.screen, lerp(col, TEXT_BRIGHT, 0.25), (cx2, cy2), CELL//2-5)
-                aa_circle(self.screen, col, (cx2, cy2), CELL//2-8)
+            x,y=obs["pos"]; k=obs.get("kind","rock")
+            col=OBS_R if k=="rock" else OBS_S
+            r=pygame.Rect(x*CELL+2+ox,y*CELL+TOP_H+2+oy,CELL-4,CELL-4)
+            rr(surf,col,r,4)
+            cx2,cy2=r.centerx,r.centery
+            if k=="rock":
+                aac(surf,lrp(col,WHITE,0.3),(cx2,cy2),CELL//2-5)
+                aac(surf,col,(cx2,cy2),CELL//2-8)
             else:
-                pts = [(cx2, cy2-8),(cx2-5, cy2+6),(cx2+5, cy2+6)]
-                pygame.draw.polygon(self.screen, lerp(OBS_SPIKE, TEXT_BRIGHT, 0.5), pts)
-                # Label below shape
-                lbl = self.F["tiny"].render("spk", True, OBS_SPIKE)
-                self.screen.blit(lbl, (r.x+1, r.bottom-12))
+                pts=[(cx2,cy2-9),(cx2-6,cy2+7),(cx2+6,cy2+7)]
+                pygame.draw.polygon(surf,lrp(OBS_S,WHITE,0.55),pts)
 
-    def _draw_pies(self, gd):
-        t = self._t
+    def _d_pies(self,surf,gd,ox,oy):
+        t=self._t
         for pie in gd.get("pies",[]):
-            px,py = pie["pos"]
-            kind  = pie.get("kind","normal")
-            col   = PIE_GOLD if kind=="golden" else PIE_NORM if kind=="normal" else PIE_ROT
-            cx2   = px*CELL + CELL//2
-            cy2   = py*CELL + TOP_H + CELL//2 + int(2*math.sin(t*3+px*0.7+py*0.5))
-            rad   = CELL//2 - 4
-            aa_circle(self.screen, col, (cx2, cy2), rad)
-            aa_circle(self.screen, lerp(col, TEXT_BRIGHT, 0.55), (cx2-2, cy2-2), rad//3)
-            if kind == "golden":
-                pygame.gfxdraw.aacircle(self.screen, cx2, cy2, rad+2, (*col, 160))
-            # Small label
-            lbl_map = {"golden":"G","normal":"N","rotten":"R"}
-            lt = self.F["tiny"].render(lbl_map[kind], True, lerp(col, TEXT_BRIGHT, 0.6))
-            self.screen.blit(lt, (cx2 - lt.get_width()//2, cy2 - lt.get_height()//2))
+            px,py=pie["pos"]; k=pie.get("kind","normal")
+            col=PIE_G if k=="golden" else PIE_N if k=="normal" else PIE_R
+            cx2=px*CELL+CELL//2+ox; cy2=py*CELL+TOP_H+CELL//2+oy
+            bob=int(2.5*math.sin(t*3.5+px*0.9+py*0.7))
+            cy2+=bob; rad=CELL//2-4
+            if k=="golden":
+                pls=0.5+0.5*math.sin(t*4+px+py)
+                glow_circle(surf,col,(cx2,cy2),rad,int(6+4*pls),int(55*pls))
+            elif k=="rotten":
+                glow_circle(surf,col,(cx2,cy2),rad,5,30)
+            aac(surf,col,(cx2,cy2),rad)
+            aac(surf,lrp(col,WHITE,0.65),(cx2-2,cy2-2),rad//3)
 
-    def _draw_snakes(self, gd):
+    def _d_snakes(self,surf,gd,ox,oy):
         for snake in gd.get("snakes",[]):
-            pid   = snake["player_id"]
-            body  = snake["body"]
-            alive = snake.get("alive",True)
-            h_col = [P0_HEAD,P1_HEAD][pid] if alive else DEAD_C
-            b_col = [P0_BODY,P1_BODY][pid] if alive else (45,45,58)
-            glow  = [P0_GLOW,P1_GLOW][pid]
-
+            pid2=snake["pid"] if "pid" in snake else snake.get("player_id",0)
+            body=snake["body"]; alive=snake.get("alive",True)
+            hc=[P0,P1][pid2] if alive else DEAD
+            bc=[P0_D,P1_D][pid2] if alive else (38,40,52)
+            gl=[P0_GLOW,P1_GLOW][pid2]
             for i,(bx,by) in enumerate(reversed(body)):
-                idx    = len(body)-1-i
-                is_hd  = idx==0
-                col    = h_col if is_hd else b_col
-                fade   = max(0.35, 1.0 - idx*0.04)
-                col    = lerp(DEAD_C, col, fade)
-                r      = pygame.Rect(bx*CELL+1, by*CELL+TOP_H+1, CELL-2, CELL-2)
-                rr(self.screen, col, r, 6 if is_hd else 3)
+                idx=len(body)-1-i; is_hd=idx==0
+                fade=max(0.28,1.-idx*0.05)
+                col=lrp(DEAD,hc if is_hd else bc,fade)
+                r=pygame.Rect(bx*CELL+1+ox,by*CELL+TOP_H+1+oy,CELL-2,CELL-2)
+                br=8 if is_hd else 4
+                rr(surf,col,r,br)
                 if is_hd and alive:
-                    rrb(self.screen, glow, r, 6, 1)
-                    self._draw_eyes(r, snake["direction"], glow)
+                    glow_rect(surf,gl,r,br,6,35)
+                    rrb(surf,gl,r,br,1)
+                    self._eyes(surf,r,snake["direction"],gl)
 
-    def _draw_eyes(self, r, direction, glow):
-        offs = {
-            "RIGHT":[(r.right-7, r.top+6),(r.right-7, r.bottom-9)],
-            "LEFT": [(r.left+4,  r.top+6),(r.left+4,  r.bottom-9)],
-            "UP":   [(r.left+6,  r.top+4),(r.right-9, r.top+4)],
-            "DOWN": [(r.left+6,  r.bottom-7),(r.right-9, r.bottom-7)],
-        }
-        for ex,ey in offs.get(direction,[]):
-            aa_circle(self.screen, BG,   (ex, ey), 3)
-            aa_circle(self.screen, glow, (ex, ey), 2)
+    def _eyes(self,surf,r,d,glow):
+        offs={"RIGHT":[(r.right-7,r.top+6),(r.right-7,r.bottom-9)],
+              "LEFT": [(r.left+4, r.top+6),(r.left+4, r.bottom-9)],
+              "UP":   [(r.left+6, r.top+4),(r.right-9,r.top+4)],
+              "DOWN": [(r.left+6, r.bottom-7),(r.right-9,r.bottom-7)]}
+        for ex,ey in offs.get(d,[]):
+            aac(surf,BG,(ex,ey),3); aac(surf,glow,(ex,ey),2)
 
-    def _draw_topbar(self, gd):
-        pygame.draw.rect(self.screen, PANEL_BG, (0,0,WIN_W,TOP_H))
-        pygame.draw.line(self.screen, BORDER, (0,TOP_H),(WIN_W,TOP_H))
+    # ── Top bar ───────────────────────────────────────────────────────────────
+    def _d_topbar(self,surf):
+        t=self._t
+        # Background
+        tb=pygame.Surface((GRID_W*CELL,TOP_H),pygame.SRCALPHA); tb.fill((6,7,14,250))
+        surf.blit(tb,(0,0))
+        # Animated bottom edge glow
+        for px2 in range(GRID_W*CELL):
+            a=int(80*(0.5+0.5*math.sin(px2*0.018+t*1.5)))
+            c=lrp(ACCENT,P0,px2/(GRID_W*CELL))
+            pygame.draw.line(surf,(*c,a),(px2,TOP_H-1),(px2,TOP_H))
+        pygame.draw.line(surf,BORDER,(0,TOP_H),(WIN_W,TOP_H))
+
+        gd=self.gdata
         if not gd: return
+        unames=gd.get("usernames",["P1","P2"])
+        snakes=gd.get("snakes",[])
+        time_left=gd.get("time_left",0)
 
-        unames    = gd.get("usernames",["P1","P2"])
-        snakes    = gd.get("snakes",[])
-        time_left = gd.get("time_left",0)
+        for i in range(min(2,len(snakes))):
+            sn=snakes[i]; name=unames[i] if i<len(unames) else f"P{i+1}"
+            hp=sn.get("health",0); alive=sn.get("alive",True)
+            col=[P0,P1][i] if alive else DEAD; is_me=self.pid==i
+            bx=12 if i==0 else GRID_W*CELL-12-240
 
-        for i in range(min(2, len(snakes))):
-            sn    = snakes[i]
-            name  = unames[i] if i<len(unames) else f"P{i+1}"
-            hp    = sn.get("health",0)
-            alive = sn.get("alive",True)
-            col   = [P0_HEAD,P1_HEAD][i] if alive else DEAD_C
-            is_me = self.player_id==i
-
-            bx = 12 if i==0 else GRID_W*CELL-12-220
-
-            # Tag
-            tag_txt = "YOU" if is_me else f"P{i+1}"
-            rr(self.screen, (*col[:3],50), pygame.Rect(bx, 5, 44, 22), 4)
-            tag = self.F["tiny"].render(tag_txt, True, col)
-            self.screen.blit(tag, (bx+5, 10))
-
-            # Name
-            nt = self.F["h2"].render(name + (" [dead]" if not alive else ""), True, col)
-            self.screen.blit(nt, (bx+52, 5))
-            # HP bar
-            draw_hp(self.screen, bx, 36, 220, 14, hp, MAX_HEALTH)
-            ht = self.F["tiny"].render(f"{hp} HP", True, TEXT_DIM)
-            self.screen.blit(ht, (bx+224, 37))
+            # Name with glow if alive
+            if alive: glow_rect(surf,col,pygame.Rect(bx,4,240,26),6,8,15)
+            tag="YOU" if is_me else f"P{i+1}"
+            tr=pygame.Rect(bx,6,38,22)
+            rr(surf,(*col[:3],60),tr,4); rrb(surf,col,tr,4,1)
+            tt=self.F["xs"].render(tag,True,WHITE)
+            surf.blit(tt,(tr.centerx-tt.get_width()//2,tr.centery-tt.get_height()//2))
+            nt=self.F["h2"].render(name+(" [dead]" if not alive else ""),True,col if alive else DEAD)
+            surf.blit(nt,(bx+46,6))
+            draw_hp(surf,bx,38,240,18,hp,MAX_HEALTH,col if alive else None)
 
         # Timer
-        tcx    = GRID_W*CELL//2
-        urgent = time_left < 20
-        t_col  = RED_ERR if urgent else ACCENT
-        if urgent and int(self._t*2)%2==0:
-            t_col = lerp(RED_ERR, TEXT_BRIGHT, 0.3)
-        tm = self.F["bignum"].render(str(int(time_left)), True, t_col)
-        self.screen.blit(tm, (tcx - tm.get_width()//2, 2))
-        sl = self.F["tiny"].render("sec", True, TEXT_DIM)
-        self.screen.blit(sl, (tcx - sl.get_width()//2, 52))
+        tcx=GRID_W*CELL//2; urgent=time_left<20
+        tc=RED_C if urgent else WHITE
+        if urgent and int(t*2)%2==0: tc=lrp(RED_C,WHITE,0.5)
+        tm=self.F["num"].render(str(int(time_left)),True,tc)
+        if urgent: glow_rect(surf,RED_C,pygame.Rect(tcx-tm.get_width()//2-6,2,tm.get_width()+12,tm.get_height()),6,10,20)
+        surf.blit(tm,(tcx-tm.get_width()//2,2))
+        sl=self.F["xs"].render("SEC",True,DIMGRAY)
+        surf.blit(sl,(tcx-sl.get_width()//2,62))
 
-    def _draw_sidebar(self, gd):
-        sx = GRID_W * CELL
-        sw = SIDEBAR
+    # ── Sidebar ───────────────────────────────────────────────────────────────
+    def _d_sidebar(self,surf):
+        sx=GRID_W*CELL; sw=SIDEBAR
+        # Background
+        sb=pygame.Surface((sw,WIN_H),pygame.SRCALPHA); sb.fill((7,8,16,255))
+        surf.blit(sb,(sx,0))
+        pygame.draw.line(surf,BORDER,(sx,0),(sx,WIN_H),1)
 
-        # Panel background
-        pygame.draw.rect(self.screen, PANEL_BG, (sx, 0, sw, WIN_H))
-        pygame.draw.line(self.screen, BORDER, (sx, 0), (sx, WIN_H), 1)
+        # Header showing role
+        hh=TOP_H
+        rr(surf,(8,9,18),pygame.Rect(sx,0,sw,hh))
+        pygame.draw.line(surf,BORDER,(sx,hh),(sx+sw,hh),1)
+        if self.is_fan:   rlbl,rcol="SPECTATOR",CHEER_C
+        elif self.pid is not None: rlbl,rcol=f"PLAYER {self.pid+1}",[P0,P1][self.pid]
+        else:              rlbl,rcol="CHAT",GRAY
+        rl=self.F["h2"].render(rlbl,True,rcol)
+        glow_rect(surf,rcol,pygame.Rect(sx+sw//2-rl.get_width()//2-8,hh//2-rl.get_height()//2-4,rl.get_width()+16,rl.get_height()+8),6,10,20)
+        surf.blit(rl,(sx+sw//2-rl.get_width()//2,hh//2-rl.get_height()//2))
 
-        # ── Header ──────────────────────────────────────────────────────────
-        pygame.draw.rect(self.screen, PANEL_DARK, (sx, 0, sw, TOP_H))
-        pygame.draw.line(self.screen, BORDER, (sx, TOP_H), (sx + sw, TOP_H), 1)
+        # Chat area
+        PAD=10; INP_H=46; HNT_H=22
+        ctop=hh+PAD; cbot=WIN_H-INP_H-HNT_H-PAD*2; ch=cbot-ctop
+        cr=pygame.Rect(sx+PAD,ctop,sw-PAD*2,ch)
+        rr(surf,(5,6,14),cr,8); rrb(surf,BORDER,cr,8,1)
 
-        role_label = "SPECTATOR" if self.is_fan else \
-                     f"PLAYER {self.player_id + 1}" if self.player_id is not None else "CHAT"
-        role_col   = CHEER_C if self.is_fan else \
-                     [P0_HEAD, P1_HEAD][self.player_id] if self.player_id is not None else TEXT_DIM
-        rl = self.F["h2"].render(role_label, True, role_col)
-        self.screen.blit(rl, (sx + sw//2 - rl.get_width()//2, TOP_H//2 - rl.get_height()//2))
+        MSG_H=50; MSG_PAD=6; maxm=ch//(MSG_H+MSG_PAD)
+        visible=self.chat_log[-maxm:]
 
-        # ── Chat area ────────────────────────────────────────────────────────
-        PAD       = 8
-        INP_H     = 42
-        HINT_H    = 20
-        chat_top  = TOP_H + PAD
-        chat_bot  = WIN_H - INP_H - HINT_H - PAD * 2
-        chat_h    = chat_bot - chat_top
+        old_clip=surf.get_clip()
+        surf.set_clip(cr.inflate(-2,-2))
+        for j,(sender,text,col) in enumerate(visible):
+            is_me=sender==self.username
+            bx2=sx+PAD+6; bw2=sw-PAD*2-12
+            by2=ctop+PAD+j*(MSG_H+MSG_PAD)
+            br2=pygame.Rect(bx2,by2,bw2,MSG_H)
+            # Bubble
+            bg2=lrp((6,7,16),col,0.09) if is_me else (9,10,22)
+            rr(surf,bg2,br2,8)
+            if is_me: rrb(surf,(*col[:3],80),br2,8,1)
+            # Left accent
+            pygame.draw.rect(surf,col,(bx2,by2+8,4,MSG_H-16),border_radius=2)
+            # Sender name — bold, colored
+            ns=self.F["chatname"].render(sender,True,col)
+            surf.blit(ns,(bx2+14,by2+5))
+            # Message text — large, high contrast
+            mc=max(0,(bw2-18)//9)
+            ms=self.F["chat"].render(text[:mc],True,OFFWHITE)
+            surf.blit(ms,(bx2+14,by2+24))
+        surf.set_clip(old_clip)
 
-        # Background for message area
-        chat_rect = pygame.Rect(sx + PAD, chat_top, sw - PAD * 2, chat_h)
-        rr(self.screen, PANEL_DARK, chat_rect, 8)
-        rrb(self.screen, BORDER, chat_rect, 8, 1)
+        # Input
+        iy=WIN_H-INP_H-HNT_H-PAD
+        self.chat_inp.rect=pygame.Rect(sx+PAD,iy,sw-PAD*2,INP_H-2)
+        self.chat_inp.draw(surf)
+        ht=self.F["xs"].render("/pm username  for private message",True,DIMGRAY)
+        surf.blit(ht,(sx+sw//2-ht.get_width()//2,WIN_H-HNT_H+2))
 
-        # Draw messages — one bubble per message
-        MSG_H     = 46   # taller bubble for bigger fonts
-        MSG_PAD_Y = 5
-        max_msgs  = chat_h // (MSG_H + MSG_PAD_Y)
-        visible   = self.chat_log[-max_msgs:]
+    # ── Countdown ─────────────────────────────────────────────────────────────
+    def _d_countdown(self,surf):
+        n=self.countdown; gcx=(GRID_W*CELL)//2; gcy=WIN_H//2
+        phase=min(1.,self._t-self._cd_t)
+        cols={3:(220,50,70),2:(220,160,30),1:(40,210,90)}
+        col=cols.get(n,GREEN_C)
 
-        # Clip drawing to chat area
-        old_clip  = self.screen.get_clip()
-        self.screen.set_clip(chat_rect.inflate(-2, -2))
+        # Full overlay
+        ov=pygame.Surface((GRID_W*CELL,WIN_H),pygame.SRCALPHA)
+        ov.fill((3,4,10,int(200*min(1.,phase/0.1))))
+        surf.blit(ov,(0,0))
 
-        for j, (sender, text, col) in enumerate(visible):
-            is_me    = sender == self.username
-            bub_w    = sw - PAD * 2 - 10
-            bub_x    = sx + PAD + 5
-            bub_y    = chat_top + PAD + j * (MSG_H + MSG_PAD_Y)
+        # Rings
+        for ri in range(4):
+            delay=ri*0.1; rph=max(0.,phase-delay)
+            if rph<=0: continue
+            rr2=int(10+rph*(200+ri*35)); ra=max(0,int(150*(1.-rph)*(1.-ri*0.22)))
+            if ra>0 and rr2>0:
+                rs=pygame.Surface((rr2*2+4,rr2*2+4),pygame.SRCALPHA)
+                pygame.gfxdraw.aacircle(rs,rr2+2,rr2+2,rr2,(*col,ra))
+                surf.blit(rs,(gcx-rr2-2,gcy-rr2-2))
 
-            # Bubble background — slightly brighter for own messages
-            bub_rect = pygame.Rect(bub_x, bub_y, bub_w, MSG_H)
-            bub_bg   = lerp(PANEL_DARK, col, 0.07) if is_me else (18, 20, 34)
-            rr(self.screen, bub_bg, bub_rect, 7)
+        # Number
+        ease=easeout(min(1.,phase/0.28)); scale=2.8-ease*1.8
+        al=min(255,int(255*min(1.,phase/0.15)))
+        base=self.F["giant"].render(str(n),True,col)
+        tw=max(1,int(base.get_width()*scale*2)); th=max(1,int(base.get_height()*scale*2))
+        big=pygame.transform.smoothscale(base,(tw,th)); big.set_alpha(al)
+        # Glow
+        gr=max(tw,th)//2+40
+        gs=pygame.Surface((gr*2,gr*2),pygame.SRCALPHA)
+        ga=int(80*(1.-phase*0.5)*(al/255))
+        pygame.gfxdraw.filled_circle(gs,gr,gr,gr,(*col,ga))
+        surf.blit(gs,(gcx-gr,gcy-gr-28))
+        surf.blit(big,(gcx-tw//2,gcy-th//2-28))
 
-            # Left accent bar in sender color
-            pygame.draw.rect(self.screen, col,
-                             (bub_x, bub_y + 6, 3, MSG_H - 12), border_radius=2)
+        # GET READY
+        la=min(255,int(255*min(1.,phase/0.3)))
+        ly=gcy+th//2+8+int(18*(1.-min(1.,phase/0.3)))
+        lst=self.F["h2"].render("GET  READY",True,GRAY); lst.set_alpha(la)
+        surf.blit(lst,(gcx-lst.get_width()//2,ly))
 
-            # Sender name — "small" font (13px), bright
-            name_surf = self.F["small"].render(sender, True, col)
-            self.screen.blit(name_surf, (bub_x + 12, bub_y + 5))
+        # Matchup names
+        unames=self.gdata.get("usernames",[]) if self.gdata else []
+        if len(unames)==2:
+            va=min(255,int(255*min(1.,phase/0.22)))
+            n0=self.F["h1"].render(unames[0],True,P0); n0.set_alpha(va)
+            vs=self.F["h1"].render("VS",True,DIMGRAY);  vs.set_alpha(va)
+            n1=self.F["h1"].render(unames[1],True,P1); n1.set_alpha(va)
+            tw2=n0.get_width()+vs.get_width()+n1.get_width()+32
+            x0=gcx-tw2//2; vy=gcy-th//2-72
+            surf.blit(n0,(x0,vy))
+            surf.blit(vs,(x0+n0.get_width()+14,vy))
+            surf.blit(n1,(x0+n0.get_width()+vs.get_width()+28,vy))
 
-            # Message text — "body" font (16px), bright white
-            max_chars = (bub_w - 16) // 8
-            msg_surf  = self.F["body"].render(text[:max_chars], True, TEXT_BRIGHT)
-            self.screen.blit(msg_surf, (bub_x + 12, bub_y + 22))
+        # Expanding lines
+        lw=int(200*min(1.,phase/0.4)); la2=int(160*min(1.,phase/0.25))
+        for sgn in(-1,1):
+            lx1=gcx+sgn*(tw//2+16); lx2=gcx+sgn*(tw//2+16+lw)
+            pygame.draw.line(surf,(*col,la2),(min(lx1,lx2),gcy-28),(max(lx1,lx2),gcy-28),2)
+            pygame.draw.line(surf,(*col,la2//2),(min(lx1,lx2),gcy+th//2),(max(lx1,lx2),gcy+th//2),1)
 
-        self.screen.set_clip(old_clip)
+    # ── Game over ─────────────────────────────────────────────────────────────
+    def _d_over(self,surf):
+        t=self._t; gcx=(GRID_W*CELL)//2; gcy=WIN_H//2
+        go=self.gover or {}; winner=go.get("winner","draw"); scores=go.get("scores",{})
 
-        # ── Input area ──────────────────────────────────────────────────────
-        inp_y = WIN_H - INP_H - HINT_H - PAD
-        self.chat_inp.rect = pygame.Rect(sx + PAD, inp_y, sw - PAD * 2, INP_H - 4)
-        self.chat_inp.draw(self.screen)
+        if winner=="draw":            wcol,wtxt=ACCENT,"DRAW!"
+        elif winner==self.username:   wcol,wtxt=P0,"YOU WIN!"
+        else:                         wcol,wtxt=P1,f"{winner} WINS!"
 
-        # Hint
-        hint = self.F["tiny"].render("/pm username  for private message", True, TEXT_DIM)
-        self.screen.blit(hint, (sx + sw//2 - hint.get_width()//2, WIN_H - HINT_H - 2))
-
-    def _cheer_rect(self, i):
-        sx = GRID_W*CELL
-        bw = (SIDEBAR-28)//len(self.cheer_labels)
-        return pygame.Rect(sx+8+i*(bw+2), WIN_H-68, bw, 22)
-
-    # ── Countdown overlay ─────────────────────────────────────────────────────
-    def _draw_countdown(self):
-        n     = self.countdown
-        # Center over the game grid only (exclude sidebar)
-        gcx   = (GRID_W * CELL) // 2
-        gcy   = WIN_H // 2
-
-        # Phase: 0.0 = just changed, 1.0 = about to change
-        phase = min(1.0, self._t - self._cd_t)
-
-        # Number colors per count
-        colors = {3: (220, 70, 70), 2: (220, 160, 40), 1: (50, 210, 100)}
-        col = colors.get(n, GREEN_OK)
-
-        # ── Dim overlay (fades in quickly) ──────────────────────────────────
-        fade_in = min(1.0, phase / 0.15)
-        ov = pygame.Surface((GRID_W * CELL, WIN_H), pygame.SRCALPHA)
-        ov.fill((4, 6, 14, int(175 * fade_in)))
-        self.screen.blit(ov, (0, 0))
-
-        # ── Expanding ring animation ─────────────────────────────────────────
-        ring_r = int(20 + phase * 220)
-        ring_a = max(0, int(180 * (1.0 - phase)))
-        if ring_a > 0:
-            ring_surf = pygame.Surface((ring_r*2+4, ring_r*2+4), pygame.SRCALPHA)
-            pygame.gfxdraw.aacircle(ring_surf, ring_r+2, ring_r+2, ring_r,   (*col, ring_a))
-            pygame.gfxdraw.aacircle(ring_surf, ring_r+2, ring_r+2, ring_r-1, (*col, ring_a//2))
-            self.screen.blit(ring_surf, (gcx - ring_r - 2, gcy - ring_r - 2))
-
-        # ── Second expanding ring (offset phase) ────────────────────────────
-        phase2 = min(1.0, max(0.0, phase - 0.1))
-        ring2_r = int(10 + phase2 * 180)
-        ring2_a = max(0, int(100 * (1.0 - phase2)))
-        if ring2_a > 0:
-            r2s = pygame.Surface((ring2_r*2+4, ring2_r*2+4), pygame.SRCALPHA)
-            pygame.gfxdraw.aacircle(r2s, ring2_r+2, ring2_r+2, ring2_r, (*col, ring2_a))
-            self.screen.blit(r2s, (gcx - ring2_r - 2, gcy - ring2_r - 2))
-
-        # ── Number: zoom-in then settle ──────────────────────────────────────
-        # Ease out: starts big, settles to normal size
-        ease = 1.0 - math.pow(1.0 - min(1.0, phase / 0.35), 3)
-        scale = 2.2 - ease * 1.2          # 2.2 → 1.0
-        alpha = min(255, int(255 * min(1.0, phase / 0.2)))
-
-        base_surf = self.F["title"].render(str(n), True, col)
-        tw = int(base_surf.get_width()  * scale * 2.0)
-        th = int(base_surf.get_height() * scale * 2.0)
-        tw, th = max(1, tw), max(1, th)
-        big = pygame.transform.smoothscale(base_surf, (tw, th))
-        big.set_alpha(alpha)
-
-        # Soft glow behind number
-        glow_r = max(tw, th) // 2 + 20
-        glow_surf = pygame.Surface((glow_r*2, glow_r*2), pygame.SRCALPHA)
-        glow_a    = int(55 * (1.0 - phase * 0.5) * (alpha/255))
-        pygame.gfxdraw.filled_circle(glow_surf, glow_r, glow_r, glow_r, (*col, glow_a))
-        self.screen.blit(glow_surf, (gcx - glow_r, gcy - glow_r - 20))
-
-        self.screen.blit(big, (gcx - tw//2, gcy - th//2 - 20))
-
-        # ── "GET READY" text — slides up and fades in ────────────────────────
-        label_a = min(255, int(255 * min(1.0, phase / 0.4)))
-        label_y = gcy + th//2 + int(20 * (1.0 - min(1.0, phase/0.4)))
-        label   = self.F["h2"].render("GET  READY", True, TEXT_DIM)
-        label.set_alpha(label_a)
-        self.screen.blit(label, (gcx - label.get_width()//2, label_y))
-
-        # ── Player matchup above number ──────────────────────────────────────
-        unames = []
-        if self.game_data:
-            unames = self.game_data.get("usernames", [])
-        if not unames and self.game_cfg:
-            unames = self.game_cfg.get("usernames", [])
-        if len(unames) == 2:
-            vs_a = min(255, int(255 * min(1.0, phase / 0.3)))
-            # P0 name
-            n0 = self.F["h2"].render(unames[0], True, P0_HEAD)
-            n0.set_alpha(vs_a)
-            # VS
-            vs = self.F["h2"].render("VS", True, TEXT_DIM)
-            vs.set_alpha(vs_a)
-            # P1 name
-            n1 = self.F["h2"].render(unames[1], True, P1_HEAD)
-            n1.set_alpha(vs_a)
-            total_w = n0.get_width() + vs.get_width() + n1.get_width() + 28
-            x0 = gcx - total_w//2
-            vs_y = gcy - th//2 - 60
-            self.screen.blit(n0, (x0, vs_y))
-            self.screen.blit(vs, (x0 + n0.get_width() + 12, vs_y))
-            self.screen.blit(n1, (x0 + n0.get_width() + vs.get_width() + 24, vs_y))
-
-        # ── Horizontal divider lines ─────────────────────────────────────────
-        line_a = min(160, int(200 * min(1.0, phase / 0.3)))
-        line_w = int(200 * min(1.0, phase / 0.5))
-        for sign in (-1, 1):
-            lx1 = gcx + sign * (tw//2 + 16)
-            lx2 = gcx + sign * (tw//2 + 16 + line_w)
-            pygame.draw.line(self.screen, (*col, line_a),
-                             (min(lx1,lx2), gcy - 20), (max(lx1,lx2), gcy - 20), 2)
-
-    # ── Game Over ─────────────────────────────────────────────────────────────
-    def _draw_gameover(self):
-        ov = pygame.Surface((WIN_W,WIN_H), pygame.SRCALPHA)
-        ov.fill((4,6,14,205))
-        self.screen.blit(ov,(0,0))
-
-        gcx = (GRID_W*CELL)//2
-        gcy = (TOP_H+GRID_H*CELL)//2
-
-        go     = self.game_over or {}
-        winner = go.get("winner","draw")
-        scores = go.get("scores",{})
+        # Overlay
+        ov=pygame.Surface((WIN_W,WIN_H),pygame.SRCALPHA); ov.fill((3,4,10,215))
+        surf.blit(ov,(0,0))
 
         # Card
-        card = pygame.Rect(gcx-240, gcy-145, 480, 320)
-        rr(self.screen, (12,14,26), card, 16)
-        w_col = P0_HEAD if winner==self.username else P1_HEAD if winner!="draw" else ACCENT
-        rrb(self.screen, w_col, card, 16, 2)
+        cw,ch=520,360; card=pygame.Rect(gcx-cw//2,gcy-ch//2-10,cw,ch)
+        cs=pygame.Surface((cw,ch),pygame.SRCALPHA); cs.fill((7,8,18,250))
+        surf.blit(cs,card.topleft)
+        # Animated neon border
+        pulse=0.5+0.5*math.sin(t*2.2)
+        bc=lrp(wcol,WHITE,pulse*0.25)
+        glow_rect(surf,wcol,card,14,10,20)
+        rrb(surf,bc,card,14,2)
+        pygame.draw.rect(surf,wcol,(card.x,card.y,cw,4),border_radius=14)
 
-        # Glow bar at top of card
-        pygame.draw.rect(self.screen, w_col, (card.x+2, card.y, card.w-4, 4), border_radius=16)
-
-        # Title
-        if winner=="draw":   w_txt,w_col = "DRAW!", ACCENT
-        elif winner==self.username: w_txt,w_col = "YOU WIN!", P0_HEAD
-        else:                w_txt,w_col = f"{winner} WINS!", P1_HEAD
-        wt = self.F["title"].render(w_txt, True, w_col)
-        gs = pygame.Surface((wt.get_width()+60, wt.get_height()+20), pygame.SRCALPHA)
-        gs.fill((*w_col[:3], 28))
-        self.screen.blit(gs, (gcx-gs.get_width()//2, gcy-125))
-        self.screen.blit(wt, (gcx-wt.get_width()//2, gcy-122))
-
-        pygame.draw.line(self.screen, BORDER, (card.x+24,gcy-65),(card.right-24,gcy-65))
+        # Winner text
+        wt=self.F["title"].render(wtxt,True,wcol)
+        glow_rect(surf,wcol,pygame.Rect(gcx-wt.get_width()//2-12,card.y+18,wt.get_width()+24,wt.get_height()+8),8,14,25)
+        surf.blit(wt,(gcx-wt.get_width()//2,card.y+22))
+        pygame.draw.line(surf,BORDER,(card.x+28,card.y+86),(card.right-28,card.y+86))
 
         # Scores
-        items = list(scores.items())
-        for i,(name,hp) in enumerate(items):
-            col = [P0_HEAD,P1_HEAD][i]
-            ys  = gcy-50+i*40
-            nt  = self.F["h2"].render(name, True, col)
-            self.screen.blit(nt, (gcx-220, ys))
-            draw_hp(self.screen, gcx-220, ys+26, 290, 12, hp, MAX_HEALTH)
-            ht  = self.F["small"].render(f"{hp} HP", True, col)
-            self.screen.blit(ht, (gcx+80, ys+24))
+        for i,(name,hp) in enumerate(list(scores.items())[:2]):
+            col=[P0,P1][i]; ys=card.y+96+i*50
+            nt=self.F["h2"].render(name,True,col); surf.blit(nt,(gcx-240,ys))
+            draw_hp(surf,gcx-240,ys+30,310,16,hp,MAX_HEALTH,col)
 
-        # Buttons — Rematch bigger and more prominent
-        self.btn_rematch.rect = pygame.Rect(gcx-232, gcy+88, 215, 52)
-        self.btn_lobby.rect   = pygame.Rect(gcx+17,  gcy+88, 215, 52)
-        self.btn_rematch.bg   = P0_HEAD
-        self.btn_rematch.fg   = BG
-        self.btn_rematch.draw(self.screen)
-        self.btn_lobby.draw(self.screen)
+        # Buttons
+        bw=220
+        self.btn_rematch.rect=pygame.Rect(gcx-bw-12,card.bottom-76,bw,52)
+        self.btn_lobby.rect=pygame.Rect(gcx+12,card.bottom-76,bw,52)
+        self.btn_rematch.draw(surf); self.btn_lobby.draw(surf)
 
-        hint = self.F["tiny"].render("Rematch to play again   |   Back to Lobby to wait for a new game", True, TEXT_DIM)
-        self.screen.blit(hint, (gcx-hint.get_width()//2, gcy+150))
-
-        self._draw_sidebar(self.game_data)
+        hint=self.F["xs"].render("Rematch to play again   |   Back to Lobby to queue for a new game",True,DIMGRAY)
+        surf.blit(hint,(gcx-hint.get_width()//2,card.bottom+16))
+        self._d_sidebar(surf)
 
 
-if __name__ == "__main__":
-    client = PithonArenaClient()
-    client.run()
+if __name__=="__main__":
+    Arena().run()
