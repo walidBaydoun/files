@@ -39,9 +39,9 @@ PIE_ROT     = ( 90, 130,  50)
 OBS_ROCK    = (100, 105, 125)
 OBS_SPIKE   = (160, 165, 200)
 
-TEXT        = (122,251,255)
-TEXT_DIM    = (255,225,0)
-TEXT_BRIGHT = (138,255,156)
+TEXT        = (210, 215, 235)
+TEXT_DIM    = (110, 115, 145)
+TEXT_BRIGHT = (240, 245, 255)
 ACCENT      = ( 90, 185, 255)
 GOLD        = (255, 200,  50)
 GREEN_OK    = ( 60, 200, 110)
@@ -288,6 +288,7 @@ class PithonArenaClient:
         self.last_dir    = None
         self._t          = 0.0
         self.countdown   = None
+        self._cd_t       = 0.0   # time when countdown last changed
 
         self.key_map = {
             pygame.K_UP:"UP", pygame.K_DOWN:"DOWN",
@@ -353,7 +354,8 @@ class PithonArenaClient:
             self.game_data  = None
             self.countdown  = None
         elif t == MSG_COUNTDOWN:
-            self.countdown = msg.get("count")   # 3,2,1 → show overlay; 0 → hide
+            self.countdown = msg.get("count")
+            self._cd_t     = self._t
         elif t == MSG_WATCH_OK:
             self.is_fan = True
             self.state  = S_GAME
@@ -788,38 +790,103 @@ class PithonArenaClient:
 
     # ── Countdown overlay ─────────────────────────────────────────────────────
     def _draw_countdown(self):
-        ov = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
-        ov.fill((4, 6, 14, 160))
+        n     = self.countdown
+        # Center over the game grid only (exclude sidebar)
+        gcx   = (GRID_W * CELL) // 2
+        gcy   = WIN_H // 2
+
+        # Phase: 0.0 = just changed, 1.0 = about to change
+        phase = min(1.0, self._t - self._cd_t)
+
+        # Number colors per count
+        colors = {3: (220, 70, 70), 2: (220, 160, 40), 1: (50, 210, 100)}
+        col = colors.get(n, GREEN_OK)
+
+        # ── Dim overlay (fades in quickly) ──────────────────────────────────
+        fade_in = min(1.0, phase / 0.15)
+        ov = pygame.Surface((GRID_W * CELL, WIN_H), pygame.SRCALPHA)
+        ov.fill((4, 6, 14, int(175 * fade_in)))
         self.screen.blit(ov, (0, 0))
 
-        gcx = (GRID_W * CELL) // 2
-        gcy = (TOP_H + GRID_H * CELL) // 2
+        # ── Expanding ring animation ─────────────────────────────────────────
+        ring_r = int(20 + phase * 220)
+        ring_a = max(0, int(180 * (1.0 - phase)))
+        if ring_a > 0:
+            ring_surf = pygame.Surface((ring_r*2+4, ring_r*2+4), pygame.SRCALPHA)
+            pygame.gfxdraw.aacircle(ring_surf, ring_r+2, ring_r+2, ring_r,   (*col, ring_a))
+            pygame.gfxdraw.aacircle(ring_surf, ring_r+2, ring_r+2, ring_r-1, (*col, ring_a//2))
+            self.screen.blit(ring_surf, (gcx - ring_r - 2, gcy - ring_r - 2))
 
-        n   = self.countdown
-        col = (P0_HEAD, P1_HEAD, GOLD, GREEN_OK)[min(n, 3)] if n > 0 else GREEN_OK
+        # ── Second expanding ring (offset phase) ────────────────────────────
+        phase2 = min(1.0, max(0.0, phase - 0.1))
+        ring2_r = int(10 + phase2 * 180)
+        ring2_a = max(0, int(100 * (1.0 - phase2)))
+        if ring2_a > 0:
+            r2s = pygame.Surface((ring2_r*2+4, ring2_r*2+4), pygame.SRCALPHA)
+            pygame.gfxdraw.aacircle(r2s, ring2_r+2, ring2_r+2, ring2_r, (*col, ring2_a))
+            self.screen.blit(r2s, (gcx - ring2_r - 2, gcy - ring2_r - 2))
 
-        # Pulsing scale based on time
-        pulse = 1.0 + 0.08 * math.sin(self._t * 12)
-        num_surf = self.F["title"].render(str(n), True, col)
-        scaled_w = int(num_surf.get_width()  * pulse * 2.8)
-        scaled_h = int(num_surf.get_height() * pulse * 2.8)
-        big = pygame.transform.smoothscale(num_surf, (scaled_w, scaled_h))
-        # Glow behind number
-        gs = pygame.Surface((scaled_w + 60, scaled_h + 60), pygame.SRCALPHA)
-        gs.fill((*col[:3], 30))
-        self.screen.blit(gs, (gcx - gs.get_width()//2, gcy - gs.get_height()//2 - 20))
-        self.screen.blit(big, (gcx - big.get_width()//2, gcy - big.get_height()//2 - 20))
+        # ── Number: zoom-in then settle ──────────────────────────────────────
+        # Ease out: starts big, settles to normal size
+        ease = 1.0 - math.pow(1.0 - min(1.0, phase / 0.35), 3)
+        scale = 2.2 - ease * 1.2          # 2.2 → 1.0
+        alpha = min(255, int(255 * min(1.0, phase / 0.2)))
 
-        # "GET READY" label
-        label = self.F["h2"].render("GET READY", True, TEXT_DIM)
-        self.screen.blit(label, (gcx - label.get_width()//2, gcy + scaled_h//2 + 10))
+        base_surf = self.F["title"].render(str(n), True, col)
+        tw = int(base_surf.get_width()  * scale * 2.0)
+        th = int(base_surf.get_height() * scale * 2.0)
+        tw, th = max(1, tw), max(1, th)
+        big = pygame.transform.smoothscale(base_surf, (tw, th))
+        big.set_alpha(alpha)
 
-        # Player matchup
+        # Soft glow behind number
+        glow_r = max(tw, th) // 2 + 20
+        glow_surf = pygame.Surface((glow_r*2, glow_r*2), pygame.SRCALPHA)
+        glow_a    = int(55 * (1.0 - phase * 0.5) * (alpha/255))
+        pygame.gfxdraw.filled_circle(glow_surf, glow_r, glow_r, glow_r, (*col, glow_a))
+        self.screen.blit(glow_surf, (gcx - glow_r, gcy - glow_r - 20))
+
+        self.screen.blit(big, (gcx - tw//2, gcy - th//2 - 20))
+
+        # ── "GET READY" text — slides up and fades in ────────────────────────
+        label_a = min(255, int(255 * min(1.0, phase / 0.4)))
+        label_y = gcy + th//2 + int(20 * (1.0 - min(1.0, phase/0.4)))
+        label   = self.F["h2"].render("GET  READY", True, TEXT_DIM)
+        label.set_alpha(label_a)
+        self.screen.blit(label, (gcx - label.get_width()//2, label_y))
+
+        # ── Player matchup above number ──────────────────────────────────────
+        unames = []
         if self.game_data:
             unames = self.game_data.get("usernames", [])
-            if len(unames) == 2:
-                vs = self.F["h1"].render(f"{unames[0]}  vs  {unames[1]}", True, TEXT)
-                self.screen.blit(vs, (gcx - vs.get_width()//2, gcy - scaled_h//2 - 60))
+        if not unames and self.game_cfg:
+            unames = self.game_cfg.get("usernames", [])
+        if len(unames) == 2:
+            vs_a = min(255, int(255 * min(1.0, phase / 0.3)))
+            # P0 name
+            n0 = self.F["h2"].render(unames[0], True, P0_HEAD)
+            n0.set_alpha(vs_a)
+            # VS
+            vs = self.F["h2"].render("VS", True, TEXT_DIM)
+            vs.set_alpha(vs_a)
+            # P1 name
+            n1 = self.F["h2"].render(unames[1], True, P1_HEAD)
+            n1.set_alpha(vs_a)
+            total_w = n0.get_width() + vs.get_width() + n1.get_width() + 28
+            x0 = gcx - total_w//2
+            vs_y = gcy - th//2 - 60
+            self.screen.blit(n0, (x0, vs_y))
+            self.screen.blit(vs, (x0 + n0.get_width() + 12, vs_y))
+            self.screen.blit(n1, (x0 + n0.get_width() + vs.get_width() + 24, vs_y))
+
+        # ── Horizontal divider lines ─────────────────────────────────────────
+        line_a = min(160, int(200 * min(1.0, phase / 0.3)))
+        line_w = int(200 * min(1.0, phase / 0.5))
+        for sign in (-1, 1):
+            lx1 = gcx + sign * (tw//2 + 16)
+            lx2 = gcx + sign * (tw//2 + 16 + line_w)
+            pygame.draw.line(self.screen, (*col, line_a),
+                             (min(lx1,lx2), gcy - 20), (max(lx1,lx2), gcy - 20), 2)
 
     # ── Game Over ─────────────────────────────────────────────────────────────
     def _draw_gameover(self):
