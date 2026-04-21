@@ -343,8 +343,6 @@ class PithonArenaClient:
             self.conn_ok  = False
         elif t == MSG_PLAYER_LIST:
             self.online_list = msg.get("players",[])
-            if self.state == S_GAME_OVER and self.username in self.online_list:
-                self._to_lobby()
         elif t == MSG_GAME_START:
             self.player_id = msg.get("your_id")
             self.is_fan    = False
