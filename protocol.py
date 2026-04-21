@@ -14,6 +14,7 @@ MSG_WATCH       = "WATCH"        # {"type":"WATCH"}  — fan request
 MSG_CHEER       = "CHEER"        # {"type":"CHEER","player":"username","emoji":"🐍"}
 MSG_REMATCH     = "REMATCH"      # {"type":"REMATCH"}
 MSG_LEAVE       = "LEAVE"        # {"type":"LEAVE"}  — return to lobby
+MSG_START_REQ   = "START_REQ"    # {"type":"START_REQ"}  — player requests to start
 MSG_PING        = "PING"
 
 # Server → Client
@@ -31,7 +32,7 @@ MSG_WATCH_OK    = "WATCH_OK"
 # ── Game Constants ─────────────────────────────────────────────────────────────
 GRID_W          = 30
 GRID_H          = 22
-TICK_RATE       = 7          # game ticks per second
+TICK_RATE       = 10          # game ticks per second
 INITIAL_HEALTH  = 100
 MAX_HEALTH      = 150
 GAME_DURATION   = 120         # seconds

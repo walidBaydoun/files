@@ -87,6 +87,8 @@ class ClientHandler:
             self.server.handle_rematch(self)
         elif t == MSG_LEAVE:
             self._on_leave()
+        elif t == MSG_START_REQ:
+            self.server.handle_start_req(self)
 
     # ── Handlers ───────────────────────────────────────────────────────────────
     def _on_join(self, msg: dict):
@@ -101,7 +103,6 @@ class ClientHandler:
         self.role = "lobby"
         self.send({"type": MSG_JOIN_OK, "username": name})
         self.server.broadcast_player_list()
-        self.server.try_start_game()
 
     def _on_watch(self):
         if self.username and self.role == "lobby":
@@ -267,8 +268,13 @@ class ArenaServer:
                     c.role = "lobby"
                     c.player_id = None
         self.broadcast_player_list()
-        # Try to start a new game for anyone waiting in lobby
-        time.sleep(1)
+
+    def handle_start_req(self, client: ClientHandler):
+        """A lobby player clicked Start Match — start if 2+ lobby players exist."""
+        if not client.username or client.role != "lobby":
+            return
+        if self.game_state and self.game_state.running:
+            return
         self.try_start_game()
 
     def handle_rematch(self, client: ClientHandler):
@@ -276,7 +282,6 @@ class ArenaServer:
             self._rematch_votes.add(client.username)
             gs = self.game_state
             if gs and len(self._rematch_votes) >= 2:
-                # Check both original players voted
                 if all(n in self._rematch_votes for n in gs.usernames):
                     self.try_start_game()
 
@@ -303,4 +308,3 @@ if __name__ == "__main__":
         sys.exit(1)
     port = int(sys.argv[1])
     ArenaServer(port).start()
-    
