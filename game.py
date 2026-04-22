@@ -145,17 +145,19 @@ class GameState:
         for i, snake in enumerate(self.snakes):
             if not snake.alive:
                 continue
+
+            # Wall wrap-around — teleport to opposite side, no damage
+            hx, hy = snake.body[0]
+            wx, wy = hx % GRID_W, hy % GRID_H
+            if (wx, wy) != (hx, hy):
+                snake.body[0] = (wx, wy)
+                events.append({"kind": "wrap", "player": i})
+
+            # Re-read after potential wrap
             hx, hy = snake.body[0]
 
-            # Wall collision
-            if hx < 0 or hx >= GRID_W or hy < 0 or hy >= GRID_H:
-                snake.health -= 30
-                # Bounce back
-                snake.body[0] = snake.body[1] if len(snake.body) > 1 else snake.body[0]
-                events.append({"kind": "collision", "player": i, "type": "wall"})
-
             # Obstacle collision
-            elif snake.body[0] in obstacle_cells:
+            if snake.body[0] in obstacle_cells:
                 snake.health -= 20
                 snake.body[0] = snake.body[1] if len(snake.body) > 1 else snake.body[0]
                 events.append({"kind": "collision", "player": i, "type": "obstacle"})
