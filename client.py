@@ -421,10 +421,13 @@ def scanlines(surf):
 class Arena:
     def __init__(self):
         pygame.init()
+        pygame.mixer.init()
         self.screen = pygame.display.set_mode((WIN_W, WIN_H))
         pygame.display.set_caption("Pithon Arena")
         self.clock  = pygame.time.Clock()
         self.F      = load_fonts()
+        self._music_playing = False
+        self._load_music()
         self._dt    = 0.
         self._t     = 0.
 
@@ -463,6 +466,23 @@ class Arena:
             pygame.K_a:"LEFT", pygame.K_d:"RIGHT",
         }
         self._build()
+
+    def _load_music(self):
+        import os
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Before_The_Timer_Ends.mp3")
+        try:
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.set_volume(0.45)
+        except Exception as e:
+            print(f"[music] Could not load: {e}")
+
+    def _start_music(self):
+        if not self._music_playing:
+            try:
+                pygame.mixer.music.play(-1)  # -1 = loop forever
+                self._music_playing = True
+            except Exception as e:
+                print(f"[music] Could not play: {e}")
 
     def _build(self):
         cx = WIN_W // 2
@@ -511,6 +531,7 @@ class Arena:
             self.state = S_CONNECT; self._fade_in()
         elif t == MSG_JOIN_OK:
             self.username = msg["username"]; self.state = S_LOBBY; self._fade_in()
+            self._start_music()
         elif t == MSG_JOIN_ERR:
             self.conn_msg = msg.get("reason","Error"); self.conn_ok = False
         elif t == MSG_PLAYER_LIST:
