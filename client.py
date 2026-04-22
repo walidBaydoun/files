@@ -499,6 +499,8 @@ class Arena:
         self.btn_watch   = Button(pygame.Rect(100,100,210,44),"Watch as Fan",self.F,"secondary")
         self.btn_rematch = Button(pygame.Rect(100,100,220,54),"Rematch",self.F,"primary")
         self.btn_lobby   = Button(pygame.Rect(100,100,220,54),"Back to Lobby",self.F,"secondary")
+        self.btn_mute    = Button(pygame.Rect(100,100,150,36),"Mute Music",self.F,"secondary")
+        self._music_muted = False
 
     # ── Loop ──────────────────────────────────────────────────────────────────
     def run(self):
@@ -601,6 +603,12 @@ class Arena:
                         self.net.send({"type":MSG_UNREADY}); self.i_ready=False
                     else:
                         self.net.send({"type":MSG_READY}); self.i_ready=True
+                if self.btn_mute.handle(ev):
+                    self._music_muted = not self._music_muted
+                    if self._music_muted:
+                        pygame.mixer.music.set_volume(0)
+                    else:
+                        pygame.mixer.music.set_volume(0.45)
 
             elif self.state == S_GAME:
                 if self.tf_chat.handle(ev): self._send_chat()
@@ -847,6 +855,11 @@ class Arena:
 
         hint=self.F["xs"].render("Move: WASD or Arrow Keys     Private chat: /pm username message",True,TEXT_DIS)
         self.screen.blit(hint,(cx-hint.get_width()//2,WIN_H-20))
+
+        # Mute button — top right of header
+        self.btn_mute.text = "Unmute Music" if self._music_muted else "Mute Music"
+        self.btn_mute.rect = pygame.Rect(WIN_W-170, 20, 148, 34)
+        self.btn_mute.draw(self.screen, dt)
 
     # ── Grid / game world ─────────────────────────────────────────────────────
     def _draw_grid(self, surf, ox, oy):
