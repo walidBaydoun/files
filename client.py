@@ -501,6 +501,8 @@ class Arena:
         self.btn_lobby   = Button(pygame.Rect(100,100,220,54),"Back to Lobby",self.F,"secondary")
         self.btn_mute    = Button(pygame.Rect(100,100,150,36),"Mute Music",self.F,"secondary")
         self._music_muted = False
+        self.cheer_labels = ["Fire", "Hype", "GG", "Wow", "LOL"]
+        self.cheer_colors = [(220,80,40),(80,150,255),(50,210,100),(220,180,30),(200,80,220)]
 
     # ── Loop ──────────────────────────────────────────────────────────────────
     def run(self):
@@ -614,6 +616,14 @@ class Arena:
                 if self.tf_chat.handle(ev): self._send_chat()
                 if self.is_fan and self.btn_lobby.handle(ev) and self.net:
                     self.net.send({"type":MSG_LEAVE}); self._to_lobby()
+                if self.is_fan and ev.type == pygame.MOUSEBUTTONDOWN and self.gdata:
+                    unames = self.gdata.get("usernames", [])
+                    sx2 = GRID_W*CELL; sw2 = SIDEBAR
+                    CHEER_H = 36; INP_H = 48; HNT = 22; PAD = 10; FAN_BTN_H = 56; CHEER_PAD = 8
+                    cheer_y = WIN_H - INP_H - HNT - PAD*2 - FAN_BTN_H - CHEER_H - CHEER_PAD
+                    for i, lbl in enumerate(self.cheer_labels):
+                        if self._cheer_rect(i, sx2, cheer_y, sw2, CHEER_H).collidepoint(ev.pos) and unames:
+                            self.net.send({"type":MSG_CHEER,"emoji":lbl,"player":unames[0]})
                 if ev.type == pygame.KEYDOWN and not self.is_fan and not self.tf_chat.focused:
                     d = self.key_map.get(ev.key)
                     if d and self.net: self.net.send({"type":MSG_INPUT,"direction":d})
@@ -1013,14 +1023,15 @@ class Arena:
         glow_behind(self.screen,rc,pygame.Rect(sx+sw//2-rs.get_width()//2-10,TOP_H//2-rs.get_height()//2-3,rs.get_width()+20,rs.get_height()+6),6,12,18)
         self.screen.blit(rs,(sx+sw//2-rs.get_width()//2,TOP_H//2-rs.get_height()//2))
 
-        # Spectator lobby button — always visible for fans
-        FAN_BTN_H = 56 if self.is_fan else 0
-        FAN_BTN_PAD = 8 if self.is_fan else 0
+        # Space reserved at bottom for fan controls
+        CHEER_BLOCK = (36 + 8 + 16) if self.is_fan else 0  # cheer row + label + gap
+        FAN_BTN_H   = 56 if self.is_fan else 0
+        FAN_BTN_PAD = 8  if self.is_fan else 0
 
         # Chat area
         PAD=10; INP_H=48; HNT=22
         ctop=TOP_H+PAD
-        cbot=WIN_H-INP_H-HNT-PAD*2-FAN_BTN_H-FAN_BTN_PAD
+        cbot=WIN_H-INP_H-HNT-PAD*2-FAN_BTN_H-FAN_BTN_PAD-CHEER_BLOCK
         ch=cbot-ctop
         cr=pygame.Rect(sx+PAD,ctop,sw-PAD*2,ch)
         rrect(self.screen,(3,4,9),cr,10)
@@ -1047,8 +1058,21 @@ class Arena:
             self.screen.blit(ms,(bx2+14,by2+26))
         self.screen.set_clip(old_clip)
 
-        # Fan "Back to Lobby" button
+        # Fan "Back to Lobby" button + Cheer buttons
         if self.is_fan:
+            # Cheer row just above the lobby button
+            CHEER_H = 36; CHEER_PAD = 8
+            cheer_y = WIN_H - INP_H - HNT - PAD*2 - FAN_BTN_H - CHEER_H - CHEER_PAD
+            cl = self.F["xs"].render("CHEER", True, CHEER_C)
+            self.screen.blit(cl, (sx+PAD, cheer_y - cl.get_height() - 4))
+            for i, lbl in enumerate(self.cheer_labels):
+                btn_r = self._cheer_rect(i, sx, cheer_y, sw, CHEER_H)
+                col = self.cheer_colors[i]
+                rrect(self.screen, (*col, 45), btn_r, 7)
+                rrect_border(self.screen, col, btn_r, 7, 1)
+                lt = self.F["xs"].render(lbl, True, TEXT_PRI)
+                self.screen.blit(lt, (btn_r.centerx-lt.get_width()//2, btn_r.centery-lt.get_height()//2))
+
             btn_y = WIN_H - INP_H - HNT - PAD*2 - FAN_BTN_H + PAD//2
             self.btn_lobby.rect = pygame.Rect(sx+PAD, btn_y, sw-PAD*2, FAN_BTN_H-PAD)
             self.btn_lobby.draw(self.screen, dt)
@@ -1059,6 +1083,12 @@ class Arena:
         self.tf_chat.draw(self.screen,dt)
         ht=self.F["xs"].render("/pm username  for private message",True,TEXT_DIS)
         self.screen.blit(ht,(sx+sw//2-ht.get_width()//2,WIN_H-HNT+2))
+
+    def _cheer_rect(self, i, sx, y, sw, h):
+        n   = len(self.cheer_labels)
+        pad = 10
+        bw  = (sw - pad*2 - (n-1)*4) // n
+        return pygame.Rect(sx + pad + i*(bw+4), y, bw, h)
 
     # ── Countdown ─────────────────────────────────────────────────────────────
     def _draw_countdown(self):
