@@ -604,6 +604,8 @@ class Arena:
 
             elif self.state == S_GAME:
                 if self.tf_chat.handle(ev): self._send_chat()
+                if self.is_fan and self.btn_lobby.handle(ev) and self.net:
+                    self.net.send({"type":MSG_LEAVE}); self._to_lobby()
                 if ev.type == pygame.KEYDOWN and not self.is_fan and not self.tf_chat.focused:
                     d = self.key_map.get(ev.key)
                     if d and self.net: self.net.send({"type":MSG_INPUT,"direction":d})
@@ -998,9 +1000,15 @@ class Arena:
         glow_behind(self.screen,rc,pygame.Rect(sx+sw//2-rs.get_width()//2-10,TOP_H//2-rs.get_height()//2-3,rs.get_width()+20,rs.get_height()+6),6,12,18)
         self.screen.blit(rs,(sx+sw//2-rs.get_width()//2,TOP_H//2-rs.get_height()//2))
 
+        # Spectator lobby button — always visible for fans
+        FAN_BTN_H = 56 if self.is_fan else 0
+        FAN_BTN_PAD = 8 if self.is_fan else 0
+
         # Chat area
         PAD=10; INP_H=48; HNT=22
-        ctop=TOP_H+PAD; cbot=WIN_H-INP_H-HNT-PAD*2; ch=cbot-ctop
+        ctop=TOP_H+PAD
+        cbot=WIN_H-INP_H-HNT-PAD*2-FAN_BTN_H-FAN_BTN_PAD
+        ch=cbot-ctop
         cr=pygame.Rect(sx+PAD,ctop,sw-PAD*2,ch)
         rrect(self.screen,(3,4,9),cr,10)
         rrect_border(self.screen,OUTLINE,cr,10,1)
@@ -1025,6 +1033,12 @@ class Arena:
             ms=self.F["chat_msg"].render(text[:mc],True,TEXT_PRI)
             self.screen.blit(ms,(bx2+14,by2+26))
         self.screen.set_clip(old_clip)
+
+        # Fan "Back to Lobby" button
+        if self.is_fan:
+            btn_y = WIN_H - INP_H - HNT - PAD*2 - FAN_BTN_H + PAD//2
+            self.btn_lobby.rect = pygame.Rect(sx+PAD, btn_y, sw-PAD*2, FAN_BTN_H-PAD)
+            self.btn_lobby.draw(self.screen, dt)
 
         # Input
         iy=WIN_H-INP_H-HNT-PAD
@@ -1132,14 +1146,14 @@ class Arena:
             draw_hp_bar(self.screen,gcx-240,ys+32,320,18,hp,MAX_HEALTH,c)
             ht=self.F["sm"].render(f"{hp} HP",True,TEXT_SEC); self.screen.blit(ht,(gcx+88,ys+30))
 
-        # Buttons
-        bw=220
-        self.btn_rematch.rect=pygame.Rect(gcx-bw-12,card.bottom-78,bw,52)
-        self.btn_lobby.rect=pygame.Rect(gcx+12,card.bottom-78,bw,52)
-        self.btn_rematch.draw(self.screen,dt); self.btn_lobby.draw(self.screen,dt)
-
-        hint=self.F["xs"].render("Rematch to play again   |   Back to Lobby to queue for a new game",True,TEXT_DIS)
-        self.screen.blit(hint,(gcx-hint.get_width()//2,card.bottom+16))
+        # Buttons — only shown to players, not spectators
+        if not self.is_fan:
+            bw=220
+            self.btn_rematch.rect=pygame.Rect(gcx-bw-12,card.bottom-78,bw,52)
+            self.btn_lobby.rect=pygame.Rect(gcx+12,card.bottom-78,bw,52)
+            self.btn_rematch.draw(self.screen,dt); self.btn_lobby.draw(self.screen,dt)
+            hint=self.F["xs"].render("Rematch to play again   |   Back to Lobby to queue for a new game",True,TEXT_DIS)
+            self.screen.blit(hint,(gcx-hint.get_width()//2,card.bottom+16))
         self._draw_sidebar()
 
 
