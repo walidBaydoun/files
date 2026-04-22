@@ -41,11 +41,11 @@ INITIAL_HEALTH  = 100
 MAX_HEALTH      = 150
 GAME_DURATION   = 120         # seconds
 
-# Pie types: (symbol, health_delta, color_hex)
+# Mutation Pie types: key -> {delta, color, name}
 PIE_TYPES = {
-    "golden":   {"delta": +15, "color": "#FFD700", "symbol": "🥧"},
-    "normal":   {"delta": +8,  "color": "#FF8C00", "symbol": "🫐"},
-    "rotten":   {"delta": -10, "color": "#556B2F", "symbol": "☠️"},
+    "hotsauce":  {"delta":  0, "color": "#FF4500", "name": "Hot Sauce Pie"},
+    "whipped":   {"delta":  0, "color": "#FFFAFA", "name": "Whipped Cream Pie"},
+    "blueberry": {"delta":  0, "color": "#4169E1", "name": "Blueberry Pie"},
 }
 
 # Obstacle types

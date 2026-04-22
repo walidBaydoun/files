@@ -894,6 +894,7 @@ class Arena:
 
         if gd:
             self._draw_obstacles(surf,gd,ox,oy)
+            self._draw_fire_splotch(surf,gd,ox,oy)
             self._draw_pies(surf,gd,ox,oy)
             self._draw_snakes(surf,gd,ox,oy)
 
@@ -909,6 +910,39 @@ class Arena:
             rrect_border(surf,(*GOLD_C,int(a*0.6)),tr,6,1)
             ct=self.F["sm"].render(tx,True,(*CHEER_C[:3],a))
             surf.blit(ct,(tr.x+12,tr.y+5))
+
+    def _draw_fire_splotch(self,surf,gd,ox,oy):
+        t=self._t
+        OWNER_TINT=[(255,80,40),(255,40,80)]
+        FIRE_COLS=[(255,60,0),(255,130,0),(255,200,30)]
+
+        # Fire cells — flickering flame effect
+        for fc in gd.get("fire_cells",[]):
+            fx,fy=fc["pos"]; owner=fc.get("owner",0)
+            ratio=min(1.,fc.get("ticks",1)/50)
+            flicker=0.6+0.4*math.sin(t*18+fx*3.7+fy*2.3)
+            a=int(180*ratio*flicker)
+            col=OWNER_TINT[owner%2]
+            # Glow base
+            gs2=pygame.Surface((CELL,CELL),pygame.SRCALPHA)
+            gs2.fill((*col,min(110,a))); surf.blit(gs2,(fx*CELL+ox,fy*CELL+TOP_H+oy))
+            # Flame dots
+            r2=pygame.Rect(fx*CELL+2+ox,fy*CELL+TOP_H+2+oy,CELL-4,CELL-4)
+            for _ in range(3):
+                fxr=r2.x+int((CELL-8)*((fx*31+_*17)%13)/13)
+                fyr=r2.y+int((CELL-8)*((fy*37+_*11)%13)/13)
+                fc2=FIRE_COLS[_%3]
+                aacircle(surf,(*fc2,a),(fxr,fyr),random.randint(2,4))
+
+        # Splotch cells — cream splats
+        for sp in gd.get("splotches",[]):
+            sx2,sy2=sp["pos"]
+            ratio=min(1.,sp.get("ticks",1)/40)
+            a=int(130*ratio)
+            s2=pygame.Surface((CELL,CELL),pygame.SRCALPHA)
+            pygame.draw.ellipse(s2,(235,242,255,a),(2,4,CELL-4,CELL-8))
+            pygame.draw.ellipse(s2,(190,205,255,a//2),(4,2,CELL-8,CELL-4))
+            surf.blit(s2,(sx2*CELL+ox,sy2*CELL+TOP_H+oy))
 
     def _draw_obstacles(self,surf,gd,ox,oy):
         for obs in gd.get("obstacles",[]):
@@ -926,34 +960,78 @@ class Arena:
 
     def _draw_pies(self,surf,gd,ox,oy):
         t=self._t
+        PIE_COLS = {
+            "hotsauce":  (255, 65,  30),   # vivid orange-red
+            "whipped":   (240, 245, 255),   # cream white
+            "blueberry": ( 65, 105, 225),   # royal blue
+        }
+        PIE_GLOW = {
+            "hotsauce":  (255, 120,  40),
+            "whipped":   (200, 210, 255),
+            "blueberry": (120, 160, 255),
+        }
+        PIE_LABELS = {"hotsauce":"H","whipped":"W","blueberry":"B"}
         for pie in gd.get("pies",[]):
-            px,py=pie["pos"]; k=pie.get("kind","normal")
-            c=PIE_GOLD if k=="golden" else PIE_NORM if k=="normal" else PIE_ROT
-            cx2=px*CELL+CELL//2+ox; cy2=py*CELL+TOP_H+CELL//2+oy+int(2.5*math.sin(t*3.2+px*0.9+py*0.7))
-            rad=CELL//2-4
-            if k=="golden":
-                pls=0.5+0.5*math.sin(t*4+px+py)
-                circle_glow(surf,c,(cx2,cy2),rad,int(7+4*pls),int(60*pls))
-            aacircle(surf,c,(cx2,cy2),rad)
-            aacircle(surf,lerp(c,TEXT_PRI,0.65),(cx2-2,cy2-2),max(1,rad//3))
+            px,py=pie["pos"]; k=pie.get("kind","hotsauce")
+            col  = PIE_COLS.get(k,  (200,200,200))
+            glow = PIE_GLOW.get(k,  (200,200,200))
+            cx2  = px*CELL+CELL//2+ox
+            cy2  = py*CELL+TOP_H+CELL//2+oy+int(2.5*math.sin(t*3.2+px*0.9+py*0.7))
+            rad  = CELL//2-3
+            # Pulsing glow
+            pls  = 0.5+0.5*math.sin(t*4+px+py)
+            circle_glow(surf,glow,(cx2,cy2),rad,int(8+5*pls),int(70*pls))
+            aacircle(surf,col,(cx2,cy2),rad)
+            # Inner shine
+            aacircle(surf,lerp(col,TEXT_PRI,0.6),(cx2-2,cy2-3),max(1,rad//3))
+            # Label
+            lbl = self.F["xs"].render(PIE_LABELS.get(k,"?"),True,TEXT_PRI)
+            surf.blit(lbl,(cx2-lbl.get_width()//2,cy2-lbl.get_height()//2))
 
     def _draw_snakes(self,surf,gd,ox,oy):
         for sn in gd.get("snakes",[]):
             pid=sn.get("player_id",0); body=sn["body"]; alive=sn.get("alive",True)
+            invisible=sn.get("invisible",False); shielded=sn.get("shield",False)
+            slowed=sn.get("slow",False); mutation=sn.get("mutation")
             hc=[P0,P1][pid] if alive else DEAD_C
             bc=[P0_DIM,P1_DIM][pid] if alive else (38,40,52)
             gl=[P0_GLOW,P1_GLOW][pid]
+
+            # Alpha for invisible snakes — ghost effect
+            ghost_alpha = 60 if invisible else 255
+
             for i,(bx,by) in enumerate(reversed(body)):
                 idx=len(body)-1-i; is_hd=idx==0
                 fade=max(0.25,1.-idx*0.05)
                 c=lerp(DEAD_C,hc if is_hd else bc,fade)
                 r=pygame.Rect(bx*CELL+1+ox,by*CELL+TOP_H+1+oy,CELL-2,CELL-2)
                 br=9 if is_hd else 4
-                rrect(surf,c,r,br)
+
+                if invisible:
+                    # Draw as semi-transparent ghost
+                    gs2=pygame.Surface((CELL-2,CELL-2),pygame.SRCALPHA)
+                    pygame.draw.rect(gs2,(*c,ghost_alpha),(0,0,CELL-2,CELL-2),border_radius=br)
+                    surf.blit(gs2,(r.x,r.y))
+                else:
+                    rrect(surf,c,r,br)
+
                 if is_hd and alive:
-                    glow_behind(surf,gl,r,br,7,40)
-                    rrect_border(surf,gl,r,br,1)
-                    self._draw_eyes(surf,r,sn["direction"],gl)
+                    if not invisible:
+                        # Hot sauce — red glow aura
+                        if mutation=="hotsauce":
+                            glow_behind(surf,(255,80,20),r,br,10,50)
+                        # Blueberry shield — blue ring
+                        if shielded:
+                            shield_col=(100,160,255)
+                            glow_behind(surf,shield_col,r,br,8,60)
+                            rrect_border(surf,shield_col,r,br,2)
+                        # Slow — yellow tint ring
+                        if slowed:
+                            rrect_border(surf,(220,180,30),r,br,1)
+                        # Normal glow + border
+                        glow_behind(surf,gl,r,br,7,40)
+                        rrect_border(surf,gl,r,br,1)
+                    self._draw_eyes(surf,r,sn["direction"],gl if not invisible else (*gl[:3],60))
 
     def _draw_eyes(self,surf,r,d,glow):
         offs={"RIGHT":[(r.right-7,r.top+6),(r.right-7,r.bottom-9)],
@@ -994,6 +1072,20 @@ class Arena:
             nt=self.F["h2"].render(name+(" [dead]" if not alive else ""),True,c if alive else DEAD_C)
             self.screen.blit(nt,(bx+46,5))
             draw_hp_bar(self.screen,bx,40,245,20,hp,MAX_HEALTH,c if alive else None)
+
+            # Active mutation badge
+            mut=sn.get("mutation"); shield=sn.get("shield",False)
+            inv=sn.get("invisible",False); slow=sn.get("slow",False)
+            badges=[]
+            if mut=="hotsauce" and alive: badges.append(("FIRE",  (255,80,20)))
+            if inv:                        badges.append(("INVIS", (200,210,255)))
+            if shield:                     badges.append(("SHIELD",(100,160,255)))
+            if slow:                       badges.append(("SLOW",  (220,180,30)))
+            for bi,( blbl,bcol) in enumerate(badges):
+                bt=self.F["xs"].render(blbl,True,bcol)
+                brect=pygame.Rect(bx+bi*60,64,bt.get_width()+8,14)
+                rrect(self.screen,(*bcol[:3],40),brect,4)
+                self.screen.blit(bt,(brect.x+4,brect.y+1))
 
         # Timer
         tcx=GRID_W*CELL//2; urgent=tl<20
