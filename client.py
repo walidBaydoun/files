@@ -500,7 +500,9 @@ class Arena:
         self.btn_rematch = Button(pygame.Rect(100,100,220,54),"Rematch",self.F,"primary")
         self.btn_lobby   = Button(pygame.Rect(100,100,220,54),"Back to Lobby",self.F,"secondary")
         self.btn_mute    = Button(pygame.Rect(100,100,150,36),"Mute Music",self.F,"secondary")
+        self.btn_help    = Button(pygame.Rect(100,100,36,36),"?",self.F,"secondary")
         self._music_muted = False
+        self._help_open   = False
         self.cheer_labels = ["Fire", "Hype", "GG", "Wow", "LOL"]
         self.cheer_colors = [(220,80,40),(80,150,255),(50,210,100),(220,180,30),(200,80,220)]
 
@@ -607,10 +609,15 @@ class Arena:
                         self.net.send({"type":MSG_READY}); self.i_ready=True
                 if self.btn_mute.handle(ev):
                     self._music_muted = not self._music_muted
-                    if self._music_muted:
-                        pygame.mixer.music.set_volume(0)
-                    else:
-                        pygame.mixer.music.set_volume(0.45)
+                    if self._music_muted: pygame.mixer.music.set_volume(0)
+                    else:                pygame.mixer.music.set_volume(0.45)
+                if self.btn_help.handle(ev):
+                    self._help_open = not self._help_open
+                # Click outside help modal to close it
+                elif ev.type == pygame.MOUSEBUTTONDOWN and self._help_open:
+                    modal_rect = self._help_modal_rect()
+                    if not modal_rect.collidepoint(ev.pos) and not self.btn_help.rect.collidepoint(ev.pos):
+                        self._help_open = False
 
             elif self.state == S_GAME:
                 if self.tf_chat.handle(ev): self._send_chat()
@@ -660,7 +667,7 @@ class Arena:
     def _to_lobby(self):
         self.state=S_LOBBY; self.gdata=None; self.gover=None
         self.pid=None; self.is_fan=False; self.countdown=None
-        self.i_ready=False; self.ready_list=[]
+        self.i_ready=False; self.ready_list=[]; self._help_open=False
         self._fade_in()
 
     # ── Draw ──────────────────────────────────────────────────────────────────
@@ -870,6 +877,122 @@ class Arena:
         self.btn_mute.text = "Unmute Music" if self._music_muted else "Mute Music"
         self.btn_mute.rect = pygame.Rect(WIN_W-170, 20, 148, 34)
         self.btn_mute.draw(self.screen, dt)
+
+        # Help button — circular ? next to mute
+        self.btn_help.rect = pygame.Rect(WIN_W-230, 20, 34, 34)
+        self.btn_help.draw(self.screen, dt)
+
+        # Help modal
+        if self._help_open:
+            self._draw_help_modal()
+
+    def _help_modal_rect(self):
+        mw, mh = 560, 480
+        return pygame.Rect(WIN_W//2 - mw//2, WIN_H//2 - mh//2, mw, mh)
+
+    def _draw_help_modal(self):
+        t  = self._t
+        dt = self._dt
+
+        # Dim backdrop
+        ov = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+        ov.fill((3, 4, 10, 180))
+        self.screen.blit(ov, (0, 0))
+
+        modal = self._help_modal_rect()
+
+        # Card
+        cs = pygame.Surface((modal.w, modal.h), pygame.SRCALPHA)
+        cs.fill((7, 8, 18, 252))
+        self.screen.blit(cs, modal.topleft)
+        pulse = 0.5 + 0.5 * math.sin(t * 1.8)
+        top_col = lerp(ACCENT_BLU, P0, pulse)
+        pygame.draw.rect(self.screen, top_col, (modal.x, modal.y, modal.w, 3), border_radius=14)
+        rrect_border(self.screen, OUTLINE, modal, 14, 1)
+
+        # Title
+        title = self.F["h1"].render("Mutation Pies", True, TEXT_PRI)
+        glow_behind(self.screen, ACCENT_BLU,
+                    pygame.Rect(modal.centerx - title.get_width()//2 - 8, modal.y+14,
+                                title.get_width()+16, title.get_height()+4), 8, 12, 18)
+        self.screen.blit(title, (modal.centerx - title.get_width()//2, modal.y + 16))
+
+        pygame.draw.line(self.screen, OUTLINE,
+                         (modal.x+20, modal.y+64), (modal.right-20, modal.y+64), 1)
+
+        # Pie entries
+        PIES = [
+            {
+                "name":  "Hot Sauce Pie",
+                "label": "H",
+                "col":   (255, 65, 30),
+                "glow":  (255, 120, 40),
+                "title": "Leaves a Fire Trail",
+                "lines": [
+                    "Your snake deposits burning cells along its path.",
+                    "If the opponent crosses your fire, they take 15 damage.",
+                    "The trail lasts 5 seconds. Use it to block escape routes.",
+                ],
+            },
+            {
+                "name":  "Whipped Cream Pie",
+                "label": "W",
+                "col":   (220, 230, 255),
+                "glow":  (200, 210, 255),
+                "title": "Invisibility + Splotches",
+                "lines": [
+                    "You become invisible (ghost) for 3 seconds.",
+                    "While invisible, you leave cream splotches on the ground.",
+                    "Opponent stepping on a splotch is slowed for 2 seconds.",
+                ],
+            },
+            {
+                "name":  "Blueberry Pie",
+                "label": "B",
+                "col":   (65, 105, 225),
+                "glow":  (120, 160, 255),
+                "title": "One-Hit Shield",
+                "lines": [
+                    "Grants a shield that absorbs your next collision.",
+                    "Works against obstacles, the other snake, and walls.",
+                    "After absorbing one hit the shield breaks.",
+                ],
+            },
+        ]
+
+        y = modal.y + 76
+        for pie in PIES:
+            col  = pie["col"]
+            glow = pie["glow"]
+            # Icon circle
+            cx2 = modal.x + 44
+            cy2 = y + 28
+            circle_glow(self.screen, glow, (cx2, cy2), 18, 10, 40)
+            aacircle(self.screen, col, (cx2, cy2), 18)
+            lbl = self.F["h2"].render(pie["label"], True, TEXT_PRI)
+            self.screen.blit(lbl, (cx2 - lbl.get_width()//2, cy2 - lbl.get_height()//2))
+
+            # Pie name
+            nm = self.F["h2"].render(pie["name"], True, col)
+            self.screen.blit(nm, (modal.x + 74, y + 4))
+
+            # Ability title
+            at = self.F["body_med"].render(pie["title"], True, TEXT_SEC)
+            self.screen.blit(at, (modal.x + 74, y + 30))
+
+            # Description lines
+            for li, line in enumerate(pie["lines"]):
+                lt = self.F["sm"].render(line, True, TEXT_SEC)
+                self.screen.blit(lt, (modal.x + 76, y + 52 + li * 20))
+
+            y += 140
+            if y < modal.bottom - 20:
+                pygame.draw.line(self.screen, OUTLINE,
+                                 (modal.x+20, y-4), (modal.right-20, y-4), 1)
+
+        # Close hint
+        hint = self.F["xs"].render("Click  ?  or anywhere outside to close", True, TEXT_DIS)
+        self.screen.blit(hint, (modal.centerx - hint.get_width()//2, modal.bottom - 22))
 
     # ── Grid / game world ─────────────────────────────────────────────────────
     def _draw_grid(self, surf, ox, oy):
