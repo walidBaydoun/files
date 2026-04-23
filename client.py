@@ -627,9 +627,17 @@ class Arena:
         self.btn_customize = Button(
             pygame.Rect(100, 100, 130, 36), "Customize", self.F, "secondary"
         )
+        self.btn_chat_lobby = Button(
+            pygame.Rect(100, 100, 80, 36), "Chat", self.F, "secondary"
+        )
         self._music_muted = False
         self._help_open = False
         self._custom_open = False
+        self._lobby_chat_open = False
+        self.lobby_chat_log = []   # separate log for lobby chat
+        self.tf_lobby_chat = TextField(
+            pygame.Rect(100, 100, 340, 44), self.F, "Say something...", 150
+        )
         self._my_color = [0, 220, 120]  # default mint green
         self.cheer_labels = ["Fire", "Hype", "GG", "Wow", "LOL"]
         self.cheer_colors = [
@@ -765,9 +773,14 @@ class Arena:
             prv = msg.get("private", False)
             if s not in self._ucols:
                 self._ucols[s] = CHAT_PALETTE[len(self._ucols) % len(CHAT_PALETTE)]
-            self.chat_log.append((s, ("[PM] " if prv else "") + tx, self._ucols[s]))
+            entry = (s, ("[PM] " if prv else "") + tx, self._ucols[s])
+            self.chat_log.append(entry)
             if len(self.chat_log) > 120:
                 self.chat_log.pop(0)
+            # Also mirror into lobby chat log
+            self.lobby_chat_log.append(entry)
+            if len(self.lobby_chat_log) > 80:
+                self.lobby_chat_log.pop(0)
         elif t == MSG_CHEER_RECV:
             self.cheers.append(
                 (
@@ -812,9 +825,33 @@ class Arena:
                 if self.btn_help.handle(ev):
                     self._help_open = not self._help_open
                     self._custom_open = False
+                    self._lobby_chat_open = False
                 if self.btn_customize.handle(ev):
                     self._custom_open = not self._custom_open
                     self._help_open = False
+                    self._lobby_chat_open = False
+                if self.btn_chat_lobby.handle(ev):
+                    self._lobby_chat_open = not self._lobby_chat_open
+                    self._help_open = False
+                    self._custom_open = False
+                # Lobby chat input
+                if self._lobby_chat_open:
+                    if self.tf_lobby_chat.handle(ev):
+                        self._send_lobby_chat()
+                    if ev.type == pygame.MOUSEBUTTONDOWN:
+                        # Cheer buttons
+                        for i, lbl in enumerate(self.cheer_labels):
+                            br = self._lobby_cheer_rect(i)
+                            if br.collidepoint(ev.pos) and self.net:
+                                self.net.send({"type": MSG_CHAT, "to": None,
+                                               "text": f"[Cheer] {lbl}!"})
+                        # Close button
+                        mr = self._lobby_chat_modal_rect()
+                        close = pygame.Rect(mr.right-38, mr.y+10, 28, 28)
+                        if close.collidepoint(ev.pos):
+                            self._lobby_chat_open = False
+                        elif not mr.collidepoint(ev.pos) and not self.btn_chat_lobby.rect.collidepoint(ev.pos):
+                            self._lobby_chat_open = False
                 # Modal interactions
                 if ev.type == pygame.MOUSEBUTTONDOWN:
                     if self._custom_open:
@@ -891,6 +928,12 @@ class Arena:
                     self.net.send({"type": MSG_LEAVE})
                     self._to_lobby()
 
+    def _send_lobby_chat(self):
+        txt = self.tf_lobby_chat.text.strip()
+        if txt and self.net:
+            self.net.send({"type": MSG_CHAT, "to": None, "text": txt})
+        self.tf_lobby_chat.text = ""
+
     def _send_chat(self):
         txt = self.tf_chat.text.strip()
         if txt and self.net:
@@ -938,6 +981,7 @@ class Arena:
         self.ready_list = []
         self._help_open = False
         self._custom_open = False
+        self._lobby_chat_open = False
         self._fade_in()
 
     # ── Draw ──────────────────────────────────────────────────────────────────
@@ -1237,13 +1281,21 @@ class Arena:
         self.btn_help.rect = pygame.Rect(WIN_W - 212, 20, 34, 34)
         self.btn_help.draw(self.screen, dt)
 
-        # Customize button — left side of header
+        # Customize button
         self.btn_customize.rect = pygame.Rect(WIN_W - 356, 20, 134, 34)
         self.btn_customize.draw(self.screen, dt)
-        # Snake color preview dot next to button
         pc = tuple(self._my_color)
         circle_glow(self.screen, pc, (WIN_W - 368, 37), 8, 6, 50)
         aacircle(self.screen, pc, (WIN_W - 368, 37), 8)
+
+        # Chat button
+        self.btn_chat_lobby.rect = pygame.Rect(WIN_W - 536, 20, 80, 34)
+        # Glow if unread messages while closed
+        if self._lobby_chat_open:
+            self.btn_chat_lobby.variant = "accent"
+        else:
+            self.btn_chat_lobby.variant = "secondary"
+        self.btn_chat_lobby.draw(self.screen, dt)
 
         # Help modal
         if self._help_open:
@@ -1252,6 +1304,94 @@ class Arena:
         # Customize modal
         if self._custom_open:
             self._draw_custom_modal()
+
+        # Lobby chat modal
+        if self._lobby_chat_open:
+            self._draw_lobby_chat_modal()
+
+    def _lobby_chat_modal_rect(self):
+        mw, mh = 480, 520
+        return pygame.Rect(WIN_W//2 - mw//2, WIN_H//2 - mh//2, mw, mh)
+
+    def _lobby_cheer_rect(self, i):
+        modal = self._lobby_chat_modal_rect()
+        n = len(self.cheer_labels)
+        PAD = 14; bw = (modal.w - PAD*2 - (n-1)*6) // n
+        return pygame.Rect(modal.x + PAD + i*(bw+6),
+                           modal.bottom - 64, bw, 32)
+
+    def _draw_lobby_chat_modal(self):
+        t  = self._t; dt = self._dt
+        modal = self._lobby_chat_modal_rect()
+
+        # Backdrop
+        ov = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+        ov.fill((3, 4, 10, 180))
+        self.screen.blit(ov, (0, 0))
+
+        # Card
+        cs = pygame.Surface((modal.w, modal.h), pygame.SRCALPHA)
+        cs.fill((7, 8, 18, 252))
+        self.screen.blit(cs, modal.topleft)
+        pulse = 0.5 + 0.5 * math.sin(t * 1.8)
+        top_col = lerp(ACCENT_BLU, CHEER_C, pulse)
+        pygame.draw.rect(self.screen, top_col,
+                         (modal.x, modal.y, modal.w, 3), border_radius=14)
+        rrect_border(self.screen, OUTLINE, modal, 14, 1)
+
+        # Title
+        title = self.F["h2"].render("Lobby Chat", True, TEXT_PRI)
+        self.screen.blit(title, (modal.x + 18, modal.y + 16))
+
+        # Close button
+        close = pygame.Rect(modal.right-38, modal.y+10, 28, 28)
+        rrect(self.screen, SURFACE3, close, 6)
+        rrect_border(self.screen, OUTLINE2, close, 6, 1)
+        cx2 = close.centerx; cy2 = close.centery
+        pygame.draw.line(self.screen, TEXT_SEC, (cx2-6,cy2-6),(cx2+6,cy2+6), 2)
+        pygame.draw.line(self.screen, TEXT_SEC, (cx2+6,cy2-6),(cx2-6,cy2+6), 2)
+
+        pygame.draw.line(self.screen, OUTLINE,
+                         (modal.x+14, modal.y+52), (modal.right-14, modal.y+52), 1)
+
+        # Chat log area
+        PAD = 10
+        INP_H = 44
+        log_top = modal.y + 58
+        log_bot = modal.bottom - INP_H - PAD*2
+        log_h   = log_bot - log_top
+        log_rect = pygame.Rect(modal.x+PAD, log_top, modal.w-PAD*2, log_h)
+        rrect(self.screen, (4, 5, 12), log_rect, 8)
+        rrect_border(self.screen, OUTLINE, log_rect, 8, 1)
+
+        MSG_H = 48; MGAP = 4
+        maxm  = log_h // (MSG_H + MGAP)
+        visible = self.lobby_chat_log[-maxm:]
+
+        old_clip = self.screen.get_clip()
+        self.screen.set_clip(log_rect.inflate(-2, -2))
+        for j, (sender, text, col) in enumerate(visible):
+            is_me = sender == self.username
+            bx2 = modal.x + PAD + 5
+            bw2 = modal.w - PAD*2 - 10
+            by2 = log_top + PAD + j*(MSG_H+MGAP)
+            br2 = pygame.Rect(bx2, by2, bw2, MSG_H)
+            bg2 = lerp(SURFACE, col, 0.08) if is_me else SURFACE
+            rrect(self.screen, bg2, br2, 8)
+            if is_me: rrect_border(self.screen, (*col[:3], 70), br2, 8, 1)
+            pygame.draw.rect(self.screen, col,
+                             (bx2, by2+9, 4, MSG_H-18), border_radius=2)
+            ns = self.F["chat_name"].render(sender, True, col)
+            self.screen.blit(ns, (bx2+14, by2+5))
+            mc = max(0, (bw2-20)//9)
+            ms = self.F["chat_msg"].render(text[:mc], True, TEXT_PRI)
+            self.screen.blit(ms, (bx2+14, by2+24))
+        self.screen.set_clip(old_clip)
+
+        # Input
+        inp_y = modal.bottom - INP_H - PAD
+        self.tf_lobby_chat.rect = pygame.Rect(modal.x+PAD, inp_y, modal.w-PAD*2, INP_H-2)
+        self.tf_lobby_chat.draw(self.screen, dt)
 
     def _help_modal_rect(self):
         mw, mh = 560, 480
