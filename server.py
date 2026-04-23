@@ -21,6 +21,7 @@ class ClientHandler:
         self.username: str | None = None
         self.role: str = "lobby"   # "lobby" | "player" | "fan"
         self.player_id: int | None = None   # 0 or 1 if player
+        self.color: list = [0, 220, 120]   # default green
         self._buf = b""
         self._lock = threading.Lock()
 
@@ -91,6 +92,10 @@ class ClientHandler:
             self.server.handle_ready(self, True)
         elif t == MSG_UNREADY:
             self.server.handle_ready(self, False)
+        elif t == MSG_SET_COLOR:
+            col = msg.get("color", [0, 220, 120])
+            if isinstance(col, list) and len(col) == 3:
+                self.color = [max(0,min(255,int(c))) for c in col]
 
     # ── Handlers ───────────────────────────────────────────────────────────────
     def _on_join(self, msg: dict):
@@ -237,9 +242,11 @@ class ArenaServer:
                     self._ready_queue.remove(p)
         p0.role, p1.role = "player", "player"
         p0.player_id, p1.player_id = 0, 1
-        self.game_state = GameState([p0.username, p1.username])
         self._rematch_votes.clear()
-        config = {"grid_w": 30, "grid_h": 22, "usernames": [p0.username, p1.username]}
+        self.game_state = GameState([p0.username, p1.username], [p0.color, p1.color])
+        config = {"grid_w": 30, "grid_h": 22,
+                  "usernames": [p0.username, p1.username],
+                  "colors": [p0.color, p1.color]}
         p0.send({"type": MSG_GAME_START, "your_id": 0, "config": config})
         p1.send({"type": MSG_GAME_START, "your_id": 1, "config": config})
         print(f"[server] Game starting: {p0.username} vs {p1.username}")

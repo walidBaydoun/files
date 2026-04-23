@@ -499,12 +499,30 @@ class Arena:
         self.btn_watch   = Button(pygame.Rect(100,100,210,44),"Watch as Fan",self.F,"secondary")
         self.btn_rematch = Button(pygame.Rect(100,100,220,54),"Rematch",self.F,"primary")
         self.btn_lobby   = Button(pygame.Rect(100,100,220,54),"Back to Lobby",self.F,"secondary")
-        self.btn_mute    = Button(pygame.Rect(100,100,150,36),"Mute Music",self.F,"secondary")
-        self.btn_help    = Button(pygame.Rect(100,100,36,36),"?",self.F,"secondary")
-        self._music_muted = False
-        self._help_open   = False
-        self.cheer_labels = ["Fire", "Hype", "GG", "Wow", "LOL"]
-        self.cheer_colors = [(220,80,40),(80,150,255),(50,210,100),(220,180,30),(200,80,220)]
+        self.btn_mute      = Button(pygame.Rect(100,100,150,36),"Mute Music",self.F,"secondary")
+        self.btn_help      = Button(pygame.Rect(100,100,36,36),"?",self.F,"secondary")
+        self.btn_customize = Button(pygame.Rect(100,100,130,36),"Customize",self.F,"secondary")
+        self._music_muted  = False
+        self._help_open    = False
+        self._custom_open  = False
+        self._my_color     = [0, 220, 120]   # default mint green
+        self.cheer_labels  = ["Fire","Hype","GG","Wow","LOL"]
+        self.cheer_colors  = [(220,80,40),(80,150,255),(50,210,100),(220,180,30),(200,80,220)]
+        # Color palette for customization
+        self._color_palette = [
+            [0,   220, 120],   # mint green (default)
+            [255,  50,  90],   # vivid red
+            [48,  172, 255],   # neon blue
+            [255, 200,  30],   # gold
+            [160,  80, 255],   # purple
+            [255, 130,  30],   # orange
+            [50,  220, 200],   # teal
+            [255,  80, 200],   # pink
+            [180, 255,  80],   # lime
+            [255, 255, 255],   # white
+            [140, 140, 255],   # lavender
+            [255, 100, 100],   # salmon
+        ]
 
     # ── Loop ──────────────────────────────────────────────────────────────────
     def run(self):
@@ -613,11 +631,30 @@ class Arena:
                     else:                pygame.mixer.music.set_volume(0.45)
                 if self.btn_help.handle(ev):
                     self._help_open = not self._help_open
-                # Click outside help modal to close it
-                elif ev.type == pygame.MOUSEBUTTONDOWN and self._help_open:
-                    modal_rect = self._help_modal_rect()
-                    if not modal_rect.collidepoint(ev.pos) and not self.btn_help.rect.collidepoint(ev.pos):
-                        self._help_open = False
+                    self._custom_open = False
+                if self.btn_customize.handle(ev):
+                    self._custom_open = not self._custom_open
+                    self._help_open = False
+                # Color swatch clicks in customize modal
+                if self._custom_open and ev.type == pygame.MOUSEBUTTONDOWN:
+                    for i, col in enumerate(self._color_palette):
+                        sr = self._swatch_rect(i)
+                        if sr.collidepoint(ev.pos):
+                            self._my_color = col[:]
+                            if self.net: self.net.send({"type": MSG_SET_COLOR, "color": col})
+                # Click outside modals to close
+                elif ev.type == pygame.MOUSEBUTTONDOWN:
+                    if self._help_open:
+                        mr = self._help_modal_rect()
+                        if not mr.collidepoint(ev.pos) and not self.btn_help.rect.collidepoint(ev.pos):
+                            self._help_open = False
+                    if self._custom_open:
+                        mr = self._custom_modal_rect()
+                        close = getattr(self, '_custom_close_rect', None)
+                        if close and close.collidepoint(ev.pos):
+                            self._custom_open = False
+                        elif not mr.collidepoint(ev.pos) and not self.btn_customize.rect.collidepoint(ev.pos):
+                            self._custom_open = False
 
             elif self.state == S_GAME:
                 if self.tf_chat.handle(ev): self._send_chat()
@@ -668,6 +705,7 @@ class Arena:
         self.state=S_LOBBY; self.gdata=None; self.gover=None
         self.pid=None; self.is_fan=False; self.countdown=None
         self.i_ready=False; self.ready_list=[]; self._help_open=False
+        self._custom_open=False
         self._fade_in()
 
     # ── Draw ──────────────────────────────────────────────────────────────────
@@ -878,17 +916,104 @@ class Arena:
         self.btn_mute.rect = pygame.Rect(WIN_W-170, 20, 148, 34)
         self.btn_mute.draw(self.screen, dt)
 
-        # Help button — circular ? next to mute
-        self.btn_help.rect = pygame.Rect(WIN_W-230, 20, 34, 34)
+        # Help button
+        self.btn_help.rect = pygame.Rect(WIN_W-212, 20, 34, 34)
         self.btn_help.draw(self.screen, dt)
+
+        # Customize button — left side of header
+        self.btn_customize.rect = pygame.Rect(WIN_W-356, 20, 134, 34)
+        self.btn_customize.draw(self.screen, dt)
+        # Snake color preview dot next to button
+        pc = tuple(self._my_color)
+        circle_glow(self.screen, pc, (WIN_W-368, 37), 8, 6, 50)
+        aacircle(self.screen, pc, (WIN_W-368, 37), 8)
 
         # Help modal
         if self._help_open:
             self._draw_help_modal()
 
+        # Customize modal
+        if self._custom_open:
+            self._draw_custom_modal()
+
     def _help_modal_rect(self):
         mw, mh = 560, 480
         return pygame.Rect(WIN_W//2 - mw//2, WIN_H//2 - mh//2, mw, mh)
+
+    def _custom_modal_rect(self):
+        mw, mh = 400, 280
+        return pygame.Rect(WIN_W//2 - mw//2, WIN_H//2 - mh//2, mw, mh)
+
+    def _swatch_rect(self, i):
+        modal = self._custom_modal_rect()
+        cols  = 6
+        sw    = 44; sh = 44; gap = 10
+        row   = i // cols; col = i % cols
+        total_w = cols * sw + (cols-1) * gap
+        ox    = modal.x + (modal.w - total_w) // 2
+        oy    = modal.y + 90
+        return pygame.Rect(ox + col*(sw+gap), oy + row*(sh+gap), sw, sh)
+
+    def _draw_custom_modal(self):
+        t  = self._t
+        modal = self._custom_modal_rect()
+
+        # Backdrop
+        ov = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
+        ov.fill((3, 4, 10, 180))
+        self.screen.blit(ov, (0, 0))
+
+        # Card
+        cs = pygame.Surface((modal.w, modal.h), pygame.SRCALPHA)
+        cs.fill((7, 8, 18, 252))
+        self.screen.blit(cs, modal.topleft)
+        pulse = 0.5 + 0.5 * math.sin(t * 1.8)
+        top_col = lerp(P0, ACCENT_BLU, pulse)
+        pygame.draw.rect(self.screen, top_col, (modal.x, modal.y, modal.w, 3), border_radius=14)
+        rrect_border(self.screen, OUTLINE, modal, 14, 1)
+
+        # Title
+        title = self.F["h2"].render("Choose Your Snake Color", True, TEXT_PRI)
+        self.screen.blit(title, (modal.centerx - title.get_width()//2, modal.y + 16))
+        pygame.draw.line(self.screen, OUTLINE, (modal.x+20, modal.y+54), (modal.right-20, modal.y+54), 1)
+
+        # Current color preview
+        pc = tuple(self._my_color)
+        preview_x = modal.centerx; preview_y = modal.y + 72
+        circle_glow(self.screen, pc, (preview_x, preview_y), 12, 10, 60)
+        aacircle(self.screen, pc, (preview_x, preview_y), 12)
+        ct = self.F["xs"].render("Current", True, TEXT_TER)
+        self.screen.blit(ct, (preview_x - ct.get_width()//2 + 20, preview_y - 5))
+
+        # Color swatches
+        for i, col in enumerate(self._color_palette):
+            sr = self._swatch_rect(i)
+            is_selected = col == self._my_color
+            c = tuple(col)
+            if is_selected:
+                glow_behind(self.screen, c, sr, 8, 14, 60)
+            rrect(self.screen, c, sr, 8)
+            if is_selected:
+                rrect_border(self.screen, TEXT_PRI, sr, 8, 2)
+                # Checkmark dot
+                aacircle(self.screen, TEXT_PRI, (sr.right-8, sr.top+8), 5)
+                aacircle(self.screen, c,         (sr.right-8, sr.top+8), 3)
+            else:
+                rrect_border(self.screen, (*c, 80), sr, 8, 1)
+
+        # Hint + close button
+        hint = self.F["xs"].render("Click a color to select  |  Click outside to close", True, TEXT_DIS)
+        self.screen.blit(hint, (modal.centerx - hint.get_width()//2, modal.bottom - 22))
+
+        # Close button — top right corner of card
+        close_rect = pygame.Rect(modal.right - 38, modal.y + 10, 28, 28)
+        rrect(self.screen, SURFACE3, close_rect, 6)
+        rrect_border(self.screen, OUTLINE2, close_rect, 6, 1)
+        cx2 = close_rect.centerx; cy2 = close_rect.centery
+        pygame.draw.line(self.screen, TEXT_SEC, (cx2-6,cy2-6),(cx2+6,cy2+6), 2)
+        pygame.draw.line(self.screen, TEXT_SEC, (cx2+6,cy2-6),(cx2-6,cy2+6), 2)
+        # Store rect for click handling
+        self._custom_close_rect = close_rect
 
     def _draw_help_modal(self):
         t  = self._t
@@ -1116,9 +1241,11 @@ class Arena:
             pid=sn.get("player_id",0); body=sn["body"]; alive=sn.get("alive",True)
             invisible=sn.get("invisible",False); shielded=sn.get("shield",False)
             slowed=sn.get("slow",False); mutation=sn.get("mutation")
-            hc=[P0,P1][pid] if alive else DEAD_C
-            bc=[P0_DIM,P1_DIM][pid] if alive else (38,40,52)
-            gl=[P0_GLOW,P1_GLOW][pid]
+            # Use per-snake color from server, fallback to defaults
+            raw_col = sn.get("color", [[0,220,120],[255,50,90]][pid])
+            hc  = tuple(raw_col) if alive else DEAD_C
+            bc  = tuple(int(c*0.65) for c in raw_col) if alive else (38,40,52)
+            gl  = tuple(min(255,int(c*1.25)) for c in raw_col)
 
             # Alpha for invisible snakes — ghost effect
             ghost_alpha = 60 if invisible else 255
@@ -1182,7 +1309,9 @@ class Arena:
         for i in range(min(2,len(snakes))):
             sn=snakes[i]; name=unames[i] if i<len(unames) else f"P{i+1}"
             hp=sn.get("health",0); alive=sn.get("alive",True)
-            c=[P0,P1][i] if alive else DEAD_C; is_me=self.pid==i
+            raw_col = sn.get("color", [[0,220,120],[255,50,90]][i])
+            c = tuple(raw_col) if alive else DEAD_C
+            is_me=self.pid==i
             bx=14 if i==0 else GRID_W*CELL-14-245
 
             # Name
@@ -1398,8 +1527,10 @@ class Arena:
         pygame.draw.line(self.screen,OUTLINE,(card.x+28,card.y+88),(card.right-28,card.y+88),1)
 
         # Scores
+        snakes_data = (self.gdata or {}).get("snakes", [])
         for i,(name,hp) in enumerate(list(scores.items())[:2]):
-            c=[P0,P1][i]; ys=card.y+96+i*54
+            raw = snakes_data[i].get("color", [[0,220,120],[255,50,90]][i]) if i < len(snakes_data) else [[0,220,120],[255,50,90]][i]
+            c=tuple(raw); ys=card.y+96+i*54
             nt=self.F["h2"].render(name,True,c); self.screen.blit(nt,(gcx-240,ys))
             draw_hp_bar(self.screen,gcx-240,ys+32,320,18,hp,MAX_HEALTH,c)
             ht=self.F["sm"].render(f"{hp} HP",True,TEXT_SEC); self.screen.blit(ht,(gcx+88,ys+30))

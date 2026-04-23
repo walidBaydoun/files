@@ -20,7 +20,7 @@ SHIELD_ABSORBS    = 1       # hits absorbed by blueberry shield
 
 
 class Snake:
-    def __init__(self, player_id: int, start_pos: tuple, start_dir: str):
+    def __init__(self, player_id: int, start_pos: tuple, start_dir: str, color: list = None):
         self.player_id    = player_id
         self.body         = [start_pos]
         self.direction    = start_dir
@@ -28,6 +28,7 @@ class Snake:
         self.health       = INITIAL_HEALTH
         self.alive        = True
         self.grow         = 2
+        self.color        = color or ([0,220,120] if player_id==0 else [255,50,90])
 
         # ── Mutations ──────────────────────────────────────────────────────────
         self.fire_active  = False   # leaving fire trail this turn?
@@ -92,19 +93,21 @@ class Snake:
             "invisible":  self.invisible,
             "slow":       self.slow_ticks > 0,
             "mutation":   self.active_mutation,
+            "color":      self.color,
         }
 
 
 class GameState:
-    def __init__(self, usernames: list):
+    def __init__(self, usernames: list, colors: list = None):
         self.usernames  = usernames
         self.start_time = time.time()
         self.running    = True
         self.winner     = None
         self.tick_count = 0
 
-        s0 = Snake(0, (5, GRID_H//2), "RIGHT")
-        s1 = Snake(1, (GRID_W-6, GRID_H//2), "LEFT")
+        colors = colors or [[0,220,120],[255,50,90]]
+        s0 = Snake(0, (5, GRID_H//2), "RIGHT", colors[0])
+        s1 = Snake(1, (GRID_W-6, GRID_H//2), "LEFT", colors[1])
         self.snakes = [s0, s1]
 
         # ── Effect cells ──────────────────────────────────────────────────────
