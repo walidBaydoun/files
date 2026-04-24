@@ -1818,12 +1818,12 @@ class Arena:
             mt = self.F["body_med"].render(self.conn_msg + dots, True, col)
             self.screen.blit(mt, (cx - mt.get_width() // 2, 620))
 
-        hint = self.F["xs"].render(
-            "WASD / Arrow Keys to move   |   /pm username message for private chat",
-            True,
-            TEXT_DIS,
-        )
-        self.screen.blit(hint, (cx - hint.get_width() // 2, WIN_H - 20))
+        # hint = self.F["xs"].render(
+        #     "WASD / Arrow Keys to move   |   /pm username message for private chat",
+        #     True,
+        #     TEXT_DIS,
+        # )
+        # self.screen.blit(hint, (cx - hint.get_width() // 2, WIN_H - 20))
 
     # Lobby screen
     def _draw_lobby(self):
@@ -2020,12 +2020,12 @@ class Arena:
         wh = self.F["xs"].render("Spectate an ongoing match", True, TEXT_DIS)
         self.screen.blit(wh, (cx - wh.get_width() // 2, panel.bottom + 238))
 
-        hint = self.F["xs"].render(
-            "Move: WASD or Arrow Keys     Private chat: /pm username message",
-            True,
-            TEXT_DIS,
-        )
-        self.screen.blit(hint, (cx - hint.get_width() // 2, WIN_H - 20))
+        # hint = self.F["xs"].render(
+        #     "Move: WASD or Arrow Keys     Private chat: /pm username message",
+        #     True,
+        #     TEXT_DIS,
+        # )
+        # self.screen.blit(hint, (cx - hint.get_width() // 2, WIN_H - 20))
 
         # Mute button — top right of header
         self.btn_mute.text = "Unmute Music" if self._music_muted else "Mute Music"
@@ -2044,7 +2044,7 @@ class Arena:
         aacircle(self.screen, pc, (WIN_W - 368, 37), 8)
 
         # Chat button
-        self.btn_chat_lobby.rect = pygame.Rect(WIN_W - 536, 20, 80, 34)
+        self.btn_chat_lobby.rect = pygame.Rect(WIN_W - 470, 20, 80, 34)
         # Glow if unread messages while closed
         if self._lobby_chat_open:
             self.btn_chat_lobby.variant = "accent"
