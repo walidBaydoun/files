@@ -1281,27 +1281,13 @@ class Arena:
                 else:
                     stk_col = TEXT_TER
                     stk_txt = "NEW"
-                    bs  = self.F["xs"].render(stk_txt, True, BG)
-                    bpw = bs.get_width() + 10
-                    bpr = pygame.Rect(panel.right - 90, ry + 10, bpw, 16)
-                    rrect(self.screen, stk_col, bpr, 4)
-                    if streak >= 3:
-                        glow_behind(self.screen, stk_col, bpr, 3, 30, 4)
-                    self.screen.blit(bs, (bpr.x +3 , bpr.y + 1))
-                    bs  = self.F["xs"].render(stk_txt, True, BG)
-                    bpw = bs.get_width() + 10
-                    bpr = pygame.Rect(panel.right - 90, ry + 10, bpw, 16)
-                    rrect(self.screen, stk_col, bpr, 4)
-                    if streak >= 3:
-                        glow_behind(self.screen, stk_col, bpr, 3, 30, 4)
-                    self.screen.blit(bs, (bpr.x + 3, bpr.y + 1))
                 bs  = self.F["xs"].render(stk_txt, True, BG)
                 bpw = bs.get_width() + 10
-                bpr = pygame.Rect(panel.right - 90, ry + 10, bpw, 16)
+                bpr = pygame.Rect(panel.right - 110, ry + 10, bpw, 16)
                 rrect(self.screen, stk_col, bpr, 4)
                 if streak >= 3:
                     glow_behind(self.screen, stk_col, bpr, 3, 30, 4)
-                self.screen.blit(bs, (bpr.x +5 , bpr.y + 1))
+                self.screen.blit(bs, (bpr.x + 5, bpr.y + 1))
 
                 # Ready badge
                 if is_rdy:
