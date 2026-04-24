@@ -22,6 +22,7 @@ class ClientHandler:
         self.role: str = "lobby"   # "lobby" | "player" | "fan"
         self.player_id: int | None = None   # 0 or 1 if player
         self.color: list = [0, 220, 120]   # default green
+        self.stats: dict = {"wins": 0, "losses": 0, "streak": 0}
         self._buf = b""
         self._lock = threading.Lock()
 
@@ -96,6 +97,13 @@ class ClientHandler:
             col = msg.get("color", [0, 220, 120])
             if isinstance(col, list) and len(col) == 3:
                 self.color = [max(0,min(255,int(c))) for c in col]
+        elif t == MSG_SHARE_STATS:
+            self.stats = {
+                "wins":   int(msg.get("wins",   0)),
+                "losses": int(msg.get("losses", 0)),
+                "streak": int(msg.get("streak", 0)),
+            }
+            self.server.broadcast_player_list()
 
     # ── Handlers ───────────────────────────────────────────────────────────────
     def _on_join(self, msg: dict):
@@ -214,7 +222,16 @@ class ArenaServer:
 
     def broadcast_player_list(self):
         with self._lock:
-            players = [c.username for c in self._clients if c.username and c.role == "lobby"]
+            players = [
+                {
+                    "name":   c.username,
+                    "wins":   c.stats.get("wins",   0),
+                    "losses": c.stats.get("losses", 0),
+                    "streak": c.stats.get("streak", 0),
+                    "color":  c.color,
+                }
+                for c in self._clients if c.username and c.role == "lobby"
+            ]
         self.broadcast({"type": MSG_PLAYER_LIST, "players": players})
 
     def broadcast_game_state(self):

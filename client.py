@@ -552,7 +552,7 @@ class Arena:
         self._shake = 0.0
         self._shake_off = (0, 0)
         self._screen_alpha = Tween(0, 1, 0.4, easeout3)
-        self._profile = self._load_profile()
+        self._profile = {"wins": 0, "losses": 0, "streak": 0, "best_streak": 0}
         self._pre_over_state = S_LOBBY   # state before game-over screen
 
         self.key_map = {
@@ -587,34 +587,15 @@ class Arena:
             except Exception as e:
                 print(f"[music] Could not play: {e}")
 
-    def _load_profile(self):
-        import os, json
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profile.json")
-        try:
-            with open(path, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {"wins": 0, "losses": 0, "streak": 0, "best_streak": 0}
-
-    def _save_profile(self):
-        import os, json
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profile.json")
-        try:
-            with open(path, "w") as f:
-                json.dump(self._profile, f)
-        except Exception:
-            pass
-
     def _record_result(self, won: bool):
         if won:
-            self._profile["wins"]   += 1
-            self._profile["streak"] += 1
-            self._profile["best_streak"] = max(
+            self._profile["wins"]        += 1
+            self._profile["streak"]      += 1
+            self._profile["best_streak"]  = max(
                 self._profile["best_streak"], self._profile["streak"])
         else:
             self._profile["losses"] += 1
-            self._profile["streak"] = 0
-        self._save_profile()
+            self._profile["streak"]  = 0
 
     def _build(self):
         cx = WIN_W // 2
@@ -733,11 +714,14 @@ class Arena:
             self.state = S_LOBBY
             self._fade_in()
             self._start_music()
+            # Share our local stats with the server immediately
+            self._share_stats()
         elif t == MSG_JOIN_ERR:
             self.conn_msg = msg.get("reason", "Error")
             self.conn_ok = False
         elif t == MSG_PLAYER_LIST:
             self.lobby_list = msg.get("players", [])
+            # lobby_list is now a list of dicts: {name, wins, losses, streak, color}
         elif t == MSG_READY_STATUS:
             self.ready_list = msg.get("ready", [])
             self.i_ready = self.username in self.ready_list
@@ -804,6 +788,7 @@ class Arena:
             # Record result for profile (players only, not fans/lobby)
             if self.pid is not None and self.username and winner and winner != "draw":
                 self._record_result(winner == self.username)
+                self._share_stats()
         elif t == MSG_CHAT_RECV:
             s = msg.get("from", "?")
             tx = msg.get("text", "")
@@ -974,6 +959,15 @@ class Arena:
             if isinstance(attr, Button):
                 attr._hovered = False
                 attr._hover_t = Tween(1, 0, 0.15, easeout3)
+
+    def _share_stats(self):
+        if self.net:
+            self.net.send({
+                "type":   MSG_SHARE_STATS,
+                "wins":   self._profile.get("wins",   0),
+                "losses": self._profile.get("losses", 0),
+                "streak": self._profile.get("streak", 0),
+            })
 
     def _send_lobby_chat(self):
         txt = self.tf_lobby_chat.text.strip()
@@ -1216,7 +1210,7 @@ class Arena:
             self.screen.blit(u, (WIN_W - u.get_width() - 22, 26))
 
         # Player list card
-        pw, ph2 = 540, 300
+        pw, ph2 = 540, 320
         panel = pygame.Rect(cx - pw // 2, 94, pw, ph2)
         ps = pygame.Surface((pw, ph2), pygame.SRCALPHA)
         ps.fill((6, 7, 14, 245))
@@ -1237,63 +1231,86 @@ class Arena:
             wt = self.F["body"].render("Waiting for players...", True, TEXT_TER)
             self.screen.blit(wt, (panel.centerx - wt.get_width() // 2, panel.y + 110))
         else:
-            for i, name in enumerate(self.lobby_list[:6]):
-                ry = panel.y + 62 + i * 38
+            for i, player in enumerate(self.lobby_list[:6]):
+                # Support both old (str) and new (dict) format
+                if isinstance(player, dict):
+                    name   = player.get("name", "?")
+                    wins   = player.get("wins",   0)
+                    losses = player.get("losses", 0)
+                    streak = player.get("streak", 0)
+                else:
+                    name   = player
+                    wins   = losses = streak = 0
+
+                ry    = panel.y + 62 + i * 42
                 is_me = name == self.username
-                is_rdy = name in self.ready_list
-                row = pygame.Rect(panel.x + 10, ry, pw - 20, 32)
+                is_rdy= name in self.ready_list
+
+                # Row background — taller to fit stats
+                row = pygame.Rect(panel.x + 10, ry, pw - 20, 36)
                 rbg = (18, 24, 48) if is_me else (10, 12, 24)
                 rrect(self.screen, rbg, row, 7)
                 if is_me:
                     rrect_border(self.screen, (*P0, 80), row, 7, 1)
-                # Dot
-                dc = P0 if is_rdy else ACCENT_BLU
+
+                # Online / ready dot
+                dc = GOLD_C if is_rdy else ACCENT_BLU
                 if is_rdy:
-                    circle_glow(self.screen, dc, (panel.x + 27, ry + 16), 6, 8, 45)
-                aacircle(self.screen, dc, (panel.x + 27, ry + 16), 6)
+                    circle_glow(self.screen, dc, (panel.x + 27, ry + 18), 6, 8, 45)
+                aacircle(self.screen, dc, (panel.x + 27, ry + 18), 6)
+
                 # Name
                 nc = TEXT_PRI if is_me else TEXT_SEC
-                nt = self.F["body_med"].render(
-                    name + ("  (you)" if is_me else ""), True, nc
-                )
-                self.screen.blit(nt, (panel.x + 46, ry + 6))
+                nt = self.F["sm"].render(name + ("  (you)" if is_me else ""), True, nc)
+                self.screen.blit(nt, (panel.x + 46, ry + 3))
 
-                # Win streak badge for self
-                if is_me:
-                    streak = self._profile.get("streak", 0)
-                    wins   = self._profile.get("wins", 0)
-                    losses = self._profile.get("losses", 0)
-                    # Streak badge
-                    if streak > 0:
-                        badge_txt = f"W{streak}"
-                        badge_col = GOLD_C if streak >= 3 else SUCCESS
-                    else:
-                        badge_txt = f"L{losses}" if losses > 0 else "NEW"
-                        badge_col = TEXT_TER
-                    if wins + losses > 0:
-                        badge_col2 = SUCCESS if wins >= losses else DANGER
-                        rec_txt = f"{wins}W-{losses}L"
-                        rec_s = self.F["xs"].render(rec_txt, True, badge_col2)
-                        self.screen.blit(rec_s, (panel.x + 46 + nt.get_width() + 10, ry + 9))
-                    # Streak pill
-                    bs = self.F["xs"].render(badge_txt, True, BG)
+                # W/L record
+                if wins + losses > 0:
+                    wl_col  = SUCCESS if wins >= losses else DANGER
+                    wl_txt  = f"{wins}W  {losses}L"
+                    wl_s    = self.F["xs"].render(wl_txt, True, wl_col)
+                    self.screen.blit(wl_s, (panel.x + 46, ry + 20))
+
+                # Streak pill
+                if streak > 0:
+                    stk_col = GOLD_C if streak >= 3 else SUCCESS
+                    stk_txt = f"W{streak}"
+                elif losses > 0:
+                    stk_col = TEXT_TER
+                    stk_txt = f"L{losses}"
+                else:
+                    stk_col = TEXT_TER
+                    stk_txt = "NEW"
+                    bs  = self.F["xs"].render(stk_txt, True, BG)
                     bpw = bs.get_width() + 10
-                    bpr = pygame.Rect(panel.right - 80, ry + 8, bpw, 16)
-                    rrect(self.screen, badge_col, bpr, 4)
-                    glow_behind(self.screen, badge_col, bpr, 3, 30, 4)
-                    self.screen.blit(bs, (bpr.x + 5, bpr.y + 1))
+                    bpr = pygame.Rect(panel.right - 90, ry + 10, bpw, 16)
+                    rrect(self.screen, stk_col, bpr, 4)
+                    if streak >= 3:
+                        glow_behind(self.screen, stk_col, bpr, 3, 30, 4)
+                    self.screen.blit(bs, (bpr.x +3 , bpr.y + 1))
+                    bs  = self.F["xs"].render(stk_txt, True, BG)
+                    bpw = bs.get_width() + 10
+                    bpr = pygame.Rect(panel.right - 90, ry + 10, bpw, 16)
+                    rrect(self.screen, stk_col, bpr, 4)
+                    if streak >= 3:
+                        glow_behind(self.screen, stk_col, bpr, 3, 30, 4)
+                    self.screen.blit(bs, (bpr.x + 3, bpr.y + 1))
+                bs  = self.F["xs"].render(stk_txt, True, BG)
+                bpw = bs.get_width() + 10
+                bpr = pygame.Rect(panel.right - 90, ry + 10, bpw, 16)
+                rrect(self.screen, stk_col, bpr, 4)
+                if streak >= 3:
+                    glow_behind(self.screen, stk_col, bpr, 3, 30, 4)
+                self.screen.blit(bs, (bpr.x +5 , bpr.y + 1))
+
+                # Ready badge
                 if is_rdy:
-                    rb = self.F["xs"].render("READY", True, GOLD_C)
-                    rbr = pygame.Rect(panel.right - 68, ry + 8, 56, 16)
+                    rb  = self.F["xs"].render("READY", True, GOLD_C)
+                    rbr = pygame.Rect(panel.right - 68, ry + 10, 56, 16)
                     rrect(self.screen, (38, 30, 0), rbr, 4)
                     rrect_border(self.screen, GOLD_C, rbr, 4, 1)
-                    self.screen.blit(
-                        rb,
-                        (
-                            rbr.centerx - rb.get_width() // 2,
-                            rbr.centery - rb.get_height() // 2,
-                        ),
-                    )
+                    self.screen.blit(rb, (rbr.centerx - rb.get_width()//2,
+                                         rbr.centery - rb.get_height()//2))
 
         # Status
         rc = len(self.ready_list)
@@ -1320,8 +1337,8 @@ class Arena:
 
         # Ready name pills
         for i, name in enumerate(self.ready_list[:2]):
-            c = [P0, P1][i]
-            pill_w = 180
+            c       = [P0, P1][i]
+            pill_w  = 180
             pill_r = pygame.Rect(
                 cx - pill_w // 2, panel.bottom + 116 + i * 32, pill_w, 26
             )
