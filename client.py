@@ -1,144 +1,276 @@
 """
 Pithon Arena  |  Professional Client
+
+A real-time online snake game client built with Pygame.
+Handles networking, game rendering, UI interactions, and animations.
 """
 
-import sys, socket, threading, queue, time, math, random, json
-import pygame, pygame.gfxdraw
-from protocol import *
+# ===== IMPORTS =====
+import sys  # System-specific parameters and functions
+import socket  # Low-level networking interface for TCP/IP communication
+import threading  # Multi-threaded execution for concurrent network operations
+import queue  # Thread-safe message queue for networking
+import time  # Time-related functions
+import math  # Mathematical functions for calculations
+import random  # Random number generation for particle effects and animations
+import json  # JSON serialization for network protocol communication
+import pygame  # Main graphics and events library
+import pygame.gfxdraw  # Advanced drawing functions (anti-aliased circles, etc.)
+from protocol import *  # Import protocol definitions (MSG_* constants, GRID_W, GRID_H, etc.)
 
-# Constants
-CELL = 26
-SIDEBAR = 340
-TOP_H = 84
-WIN_W = GRID_W * CELL + SIDEBAR
-WIN_H = GRID_H * CELL + TOP_H
-FPS = 60
+# ===== DISPLAY CONSTANTS =====
+CELL = 26  # Size of each grid cell in pixels for rendering
+SIDEBAR = 340  # Width of the sidebar panel (chat, stats) in pixels
+TOP_H = 84  # Height of the top bar (header) in pixels
+# Calculate total window dimensions based on grid size
+WIN_W = GRID_W * CELL + SIDEBAR  # Total window width (grid area + sidebar)
+WIN_H = GRID_H * CELL + TOP_H  # Total window height (grid area + top bar)
+FPS = 60  # Target frames per second for the game loop
 
+# ===== COORDINATE CONSTANTS =====
 # Grid center (game area only, no sidebar)
-GCX = (GRID_W * CELL) // 2
-GCY = TOP_H + (GRID_H * CELL) // 2
+GCX = (
+    GRID_W * CELL
+) // 2  # Center X coordinate of the game grid for centering elements
+GCY = (
+    TOP_H + (GRID_H * CELL) // 2
+)  # Center Y coordinate of the game grid (adjusted for top bar)
 
-# Design tokens
-BG = (5, 6, 12)
-SURFACE = (9, 11, 20)
-SURFACE2 = (13, 16, 28)
-SURFACE3 = (18, 22, 38)
-OUTLINE = (32, 38, 72)
-OUTLINE2 = (52, 60, 110)
+# ===== COLOR PALETTE: Design Tokens =====
+# Background and surface colors (dark theme)
+BG = (5, 6, 12)  # Primary background color (very dark blue)
+SURFACE = (9, 11, 20)  # Default surface/panel color
+SURFACE2 = (13, 16, 28)  # Secondary surface color (slightly lighter)
+SURFACE3 = (18, 22, 38)  # Tertiary surface color (for hover/active states)
+OUTLINE = (32, 38, 72)  # Primary border/outline color
+OUTLINE2 = (52, 60, 110)  # Secondary border color (brighter)
 
-P0 = (20, 240, 120)  # Mint green
-P0_DIM = (12, 148, 74)
-P0_GLOW = (80, 255, 170)
-P1 = (255, 48, 96)  # Vivid red
-P1_DIM = (158, 28, 58)
-P1_GLOW = (255, 120, 155)
-DEAD_C = (44, 47, 62)
+# ===== PLAYER COLORS =====
+# Player 0 colors (Mint green theme)
+P0 = (20, 240, 120)  # Player 0 primary color (mint green)
+P0_DIM = (12, 148, 74)  # Player 0 dimmed (used for dead/inactive states)
+P0_GLOW = (80, 255, 170)  # Player 0 glow effect (bright mint)
 
-PIE_GOLD = (255, 208, 32)
-PIE_NORM = (255, 122, 24)
-PIE_ROT = (64, 192, 64)
-OBS_ROCK = (76, 82, 108)
-OBS_SPIKE = (120, 130, 175)
+# Player 1 colors (Vivid red theme)
+P1 = (255, 48, 96)  # Player 1 primary color (vivid red)
+P1_DIM = (158, 28, 58)  # Player 1 dimmed (used for dead/inactive states)
+P1_GLOW = (255, 120, 155)  # Player 1 glow effect (bright red)
 
-TEXT_PRI = (255, 255, 255)
-TEXT_SEC = (185, 190, 215)
-TEXT_TER = (95, 100, 138)
-TEXT_DIS = (52, 56, 82)
-ACCENT_BLU = (48, 172, 255)
-ACCENT_PUR = (140, 80, 255)
-GOLD_C = (255, 192, 24)
-SUCCESS = (40, 210, 96)
-DANGER = (255, 48, 72)
-CHEER_C = (255, 196, 32)
+# Death/inactive color
+DEAD_C = (44, 47, 62)  # Color for dead snakes (muted)
 
-HP_HI = (36, 208, 88)
-HP_MID = (212, 180, 28)
-HP_LO = (212, 44, 56)
+# ===== GAME OBJECT COLORS =====
+# Food/pie colors
+PIE_GOLD = (255, 208, 32)  # Golden food (worth more points)
+PIE_NORM = (255, 122, 24)  # Normal food (standard value)
+PIE_ROT = (64, 192, 64)  # Rotting food (negative effect?)
 
-GRID_EVEN = (9, 11, 21)
-GRID_ODD = (7, 9, 17)
-GRID_LINE_C = (15, 17, 31)
-WALL_COL = (44, 50, 96)
+# Obstacle colors
+OBS_ROCK = (76, 82, 108)  # Rock obstacle color
+OBS_SPIKE = (120, 130, 175)  # Spike obstacle color
 
+# ===== TEXT COLORS =====
+TEXT_PRI = (255, 255, 255)  # Primary text (white)
+TEXT_SEC = (185, 190, 215)  # Secondary text (light gray)
+TEXT_TER = (95, 100, 138)  # Tertiary text (darker gray)
+TEXT_DIS = (52, 56, 82)  # Disabled text (very dark gray)
+
+# ===== ACCENT COLORS =====
+ACCENT_BLU = (48, 172, 255)  # Blue accent for UI elements
+ACCENT_PUR = (140, 80, 255)  # Purple accent for UI elements
+GOLD_C = (255, 192, 24)  # Gold color for special elements
+SUCCESS = (40, 210, 96)  # Success state color (green)
+DANGER = (255, 48, 72)  # Danger state color (red)
+CHEER_C = (255, 196, 32)  # Cheer animation color (gold)
+
+# ===== HEALTH COLOR TRANSITIONS =====
+# Health bar uses gradient from red -> yellow -> green based on remaining HP
+HP_HI = (36, 208, 88)  # High health color (green)
+HP_MID = (212, 180, 28)  # Medium health color (yellow)
+HP_LO = (212, 44, 56)  # Low health color (red)
+
+# ===== GRID RENDERING COLORS =====
+GRID_EVEN = (9, 11, 21)  # Color for even-indexed grid cells (checkerboard)
+GRID_ODD = (7, 9, 17)  # Color for odd-indexed grid cells (checkerboard)
+GRID_LINE_C = (15, 17, 31)  # Color for grid lines
+WALL_COL = (44, 50, 96)  # Color for walls/boundaries
+
+# ===== CHAT PALETTE =====
+# Colors assigned to players in chat messages (cycles through these)
 CHAT_PALETTE = [
-    (64, 196, 255),
-    (64, 255, 152),
-    (255, 152, 48),
-    (196, 80, 255),
-    (255, 80, 144),
-    (48, 212, 196),
-    (255, 212, 48),
-    (152, 255, 80),
+    (64, 196, 255),  # Cyan
+    (64, 255, 152),  # Light green
+    (255, 152, 48),  # Orange
+    (196, 80, 255),  # Purple
+    (255, 80, 144),  # Pink
+    (48, 212, 196),  # Teal
+    (255, 212, 48),  # Light gold
+    (152, 255, 80),  # Lime
 ]
 
-S_CONNECT = "connect"
-S_LOBBY = "lobby"
-S_GAME = "game"
-S_OVER = "over"
+# ===== GAME STATE CONSTANTS =====
+S_CONNECT = "connect"  # Connection screen state
+S_LOBBY = "lobby"  # Lobby waiting state
+S_GAME = "game"  # Active game state
+S_OVER = "over"  # Game over screen state
 
-FONT_REG = "/usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf"
-FONT_MED = "/usr/share/fonts/truetype/google-fonts/Poppins-Medium.ttf"
-FONT_BOLD = "/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf"
-FONT_MONO = None  # will use system monospace
+# ===== FONT PATHS =====
+# Using Google Fonts (Poppins) on Linux systems
+FONT_REG = (
+    "/usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf"  # Regular weight
+)
+FONT_MED = "/usr/share/fonts/truetype/google-fonts/Poppins-Medium.ttf"  # Medium weight
+FONT_BOLD = "/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf"  # Bold weight
+FONT_MONO = None  # Monospace font (will use system default)
 
 
-# Helper Functions for aesthetic and UI elements
-#  Linear interpolation between two colors
-def lerp(a, b, t): 
-    t = max(0.0, min(1.0, t))
+# ===== HELPER FUNCTIONS FOR AESTHETIC AND UI ELEMENTS =====
+
+
+# ===== COLOR INTERPOLATION =====
+def lerp(a, b, t):
+    """
+    Linear interpolation between two RGB colors.
+
+    Args:
+        a: Source color tuple (R, G, B)
+        b: Target color tuple (R, G, B)
+        t: Interpolation factor (0.0 = a, 1.0 = b, clamped between 0-1)
+
+    Returns:
+        Interpolated color tuple (R, G, B)
+    """
+    t = max(0.0, min(1.0, t))  # Clamp t to 0.0-1.0 range
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
-# Aninmation smoothing functions
+
+# ===== EASING FUNCTIONS FOR ANIMATIONS =====
+# These functions control how animation values change over time
+# They're used with Tween class for smooth UI transitions
+
+
 def easeout3(t):
+    """
+    Cubic ease-out function: starts fast, ends slow.
+    Creates a smooth deceleration effect.
+    """
     return 1 - (1 - min(1.0, t)) ** 3
 
 
 def easeout5(t):
+    """
+    Quintic ease-out function: even smoother deceleration than easeout3.
+    """
     return 1 - (1 - min(1.0, t)) ** 5
 
 
 def easein2(t):
+    """
+    Quadratic ease-in function: starts slow, accelerates.
+    """
     return min(1.0, t) ** 2
 
+
 def spring(t):
+    """
+    Spring animation function: creates an elastic bounce effect.
+    Overshoots the target then settles back.
+    """
     return 1 - math.exp(-12 * t) * math.cos(8 * t) if t < 1 else 1
 
 
 def hp_col(ratio):
+    """
+    Determine health bar color based on health ratio.
+    Transitions: Red (low) -> Yellow (mid) -> Green (high)
+
+    Args:
+        ratio: Health percentage (0.0 - 1.0)
+
+    Returns:
+        RGB color tuple based on health level
+    """
     if ratio > 0.5:
+        # Above 50% health: interpolate between yellow and green
         return lerp(HP_MID, HP_HI, (ratio - 0.5) * 2)
+    # Below 50% health: interpolate between red and yellow
     return lerp(HP_LO, HP_MID, ratio * 2)
 
 
 def aacircle(surf, col, pos, r):
+    """
+    Draw an anti-aliased filled circle with optional alpha.
+    Uses pygame.gfxdraw for smooth edges.
+
+    Args:
+        surf: Pygame surface to draw on
+        col: Color tuple (R, G, B) or (R, G, B, A)
+        pos: Center position tuple (x, y)
+        r: Radius in pixels
+    """
     if r < 1:
-        return
+        return  # Skip if radius is too small
     x, y, r = int(pos[0]), int(pos[1]), max(1, int(r))
     try:
+        # Draw anti-aliased circle outline
         pygame.gfxdraw.aacircle(
             surf, x, y, r, (*col[:3], col[3] if len(col) > 3 else 255)
         )
+        # Fill the circle
         pygame.gfxdraw.filled_circle(
             surf, x, y, r, (*col[:3], col[3] if len(col) > 3 else 255)
         )
     except:
-        pass
+        pass  # Silently fail if drawing fails
 
 
 def rrect(surf, col, rect, r=8):
+    """
+    Draw a rounded rectangle filled with color.
+
+    Args:
+        surf: Pygame surface to draw on
+        col: Color tuple (R, G, B)
+        rect: Pygame Rect object
+        r: Border radius in pixels (default 8)
+    """
     pygame.draw.rect(surf, col, rect, border_radius=r)
 
 
 def rrect_border(surf, col, rect, r=8, w=1):
+    """
+    Draw a rounded rectangle border (outline only).
+
+    Args:
+        surf: Pygame surface to draw on
+        col: Color tuple (R, G, B)
+        rect: Pygame Rect object
+        r: Border radius in pixels (default 8)
+        w: Border width in pixels (default 1)
+    """
     pygame.draw.rect(surf, col, rect, w, border_radius=r)
 
 
 def make_glow_surf(w, h, col, alpha=60, radius=16):
-    """Create a blurred glow surface."""
-    s = pygame.Surface((w, h), pygame.SRCALPHA)
+    """
+    Create a blurred glow effect surface using layered transparency.
+    Used to create soft glowing backgrounds for UI elements.
+
+    Args:
+        w: Width of the glow surface
+        h: Height of the glow surface
+        col: Glow color tuple (R, G, B)
+        alpha: Maximum alpha/opacity value (default 60)
+        radius: Border radius of the glow (default 16)
+
+    Returns:
+        Pygame Surface with glow effect
+    """
+    s = pygame.Surface((w, h), pygame.SRCALPHA)  # Create transparent surface
+    # Layer multiple semi-transparent rectangles to create blur effect
     for i in range(3):
-        a = alpha // (i + 1)
-        inflate = (i + 1) * 4
+        a = alpha // (i + 1)  # Decrease alpha for each layer
+        inflate = (i + 1) * 4  # Each layer is slightly smaller
         r = pygame.Rect(inflate, inflate, w - inflate * 2, h - inflate * 2)
         if r.width > 0 and r.height > 0:
             pygame.draw.rect(s, (*col[:3], a), r, border_radius=radius + inflate)
@@ -146,6 +278,17 @@ def make_glow_surf(w, h, col, alpha=60, radius=16):
 
 
 def glow_behind(surf, col, rect, spread=16, alpha=50, r=10):
+    """
+    Draw a glow effect behind/around a rectangular element.
+
+    Args:
+        surf: Surface to draw on
+        col: Glow color (R, G, B)
+        rect: Rectangle to glow around
+        spread: How far the glow extends (pixels)
+        alpha: Glow intensity (0-255)
+        r: Border radius
+    """
     g = make_glow_surf(
         rect.width + spread * 2, rect.height + spread * 2, col, alpha, r + spread // 2
     )
@@ -153,31 +296,54 @@ def glow_behind(surf, col, rect, spread=16, alpha=50, r=10):
 
 
 def circle_glow(surf, col, pos, radius, spread=20, alpha=50):
+    """
+    Draw a circular glow effect around a point.
+
+    Args:
+        surf: Surface to draw on
+        col: Glow color (R, G, B)
+        pos: Center position (x, y)
+        radius: Base radius of the glow
+        spread: How far the glow extends
+        alpha: Glow intensity (0-255)
+    """
     total = radius + spread
     g = pygame.Surface((total * 2, total * 2), pygame.SRCALPHA)
+    # Layer multiple circles with decreasing opacity
     for i in range(4):
-        a = alpha // (i + 1)
-        r2 = total - i * spread // 4
+        a = alpha // (i + 1)  # Decrease alpha for each layer
+        r2 = total - i * spread // 4  # Decrease radius for each layer
         if r2 > 0:
             pygame.draw.circle(g, (*col[:3], a), (total, total), r2)
     surf.blit(g, (int(pos[0]) - total, int(pos[1]) - total))
 
 
-# Font system
+# ===== FONT SYSTEM =====
 def load_fonts():
+    """
+    Load and cache all fonts used in the application.
+    Attempts to load Google Fonts (Poppins) from system, falls back to system fonts.
+    Tries to find a monospace font among several options.
+
+    Returns:
+        Dictionary mapping font names to Pygame font objects
+    """
     import os
 
     def poppins(size, weight="regular"):
+        """Load Poppins font at specified size and weight."""
         paths = {
             "regular": FONT_REG,
             "medium": FONT_MED,
             "bold": FONT_BOLD,
         }
         p = paths.get(weight, FONT_REG)
+        # Try to load from file path, fall back to system font
         if p and os.path.exists(p):
             return pygame.font.Font(p, size)
         return pygame.font.SysFont("freesans", size, bold=(weight == "bold"))
 
+    # Try to find a suitable monospace font
     mono_path = None
     for name in ["consolas", "cascadiacode", "couriernew", "dejavusansmono"]:
         p = pygame.font.match_font(name)
@@ -186,94 +352,185 @@ def load_fonts():
             break
 
     def mono(size):
+        """Load monospace font at specified size."""
         if mono_path:
             return pygame.font.Font(mono_path, size)
         return pygame.font.SysFont("monospace", size)
 
+    # Return dictionary of all fonts used in the app
     return {
-        # Display
-        "display": poppins(52, "bold"),
-        "title": poppins(38, "bold"),
-        "h1": poppins(28, "bold"),
-        "h2": poppins(21, "bold"),
-        "h3": poppins(17, "medium"),
-        # Body
-        "body_lg": poppins(18, "regular"),
-        "body": poppins(16, "regular"),
-        "body_med": poppins(16, "medium"),
-        "sm": poppins(13, "medium"),
-        "xs": poppins(11, "regular"),
-        # Special
-        "timer": poppins(56, "bold"),
-        "countdown": poppins(120, "bold"),
-        # Mono
-        "chat_name": poppins(13, "bold"),
-        "chat_msg": mono(15),
-        "mono_sm": mono(12),
+        # Display/heading fonts
+        "display": poppins(52, "bold"),  # Largest heading
+        "title": poppins(38, "bold"),  # Main title
+        "h1": poppins(28, "bold"),  # Heading 1
+        "h2": poppins(21, "bold"),  # Heading 2
+        "h3": poppins(17, "medium"),  # Heading 3
+        # Body text fonts
+        "body_lg": poppins(18, "regular"),  # Large body text
+        "body": poppins(16, "regular"),  # Regular body text
+        "body_med": poppins(16, "medium"),  # Medium-weight body text
+        "sm": poppins(13, "medium"),  # Small text
+        "xs": poppins(11, "regular"),  # Extra small text
+        # Special/game fonts
+        "timer": poppins(56, "bold"),  # Game timer display
+        "countdown": poppins(120, "bold"),  # Countdown animation (very large)
+        # Monospace fonts
+        "chat_name": poppins(13, "bold"),  # Chat username display
+        "chat_msg": mono(15),  # Chat message text
+        "mono_sm": mono(12),  # Small monospace text
     }
 
 
-# Tweening class for smooth animations
+# ===== ANIMATION/TWEENING SYSTEM =====
 class Tween:
+    """
+    Smooth animation controller using easing functions.
+    Interpolates between a start and end value over a duration.
+    Supports delays and custom easing functions.
+    """
+
     def __init__(self, start=0.0, end=1.0, duration=0.3, ease=easeout3, delay=0.0):
+        """
+        Initialize a tween animation.
+
+        Args:
+            start: Starting value (default 0.0)
+            end: Ending value (default 1.0)
+            duration: Animation duration in seconds (default 0.3)
+            ease: Easing function to use (default easeout3)
+            delay: Time to wait before animation starts (default 0.0)
+        """
         self.start = start
         self.end = end
         self.duration = duration
         self.ease = ease
         self.delay = delay
-        self._t = 0.0
-        self._elapsed = 0.0
+        self._t = 0.0  # Current eased interpolation factor (0-1)
+        self._elapsed = 0.0  # Total elapsed time
 
     def update(self, dt):
+        """
+        Update animation by delta time.
+
+        Args:
+            dt: Delta time in seconds
+
+        Returns:
+            Current interpolated value
+        """
+        # Accumulate elapsed time, capping at delay + duration
         self._elapsed = min(self._elapsed + dt, self.delay + self.duration)
+        # Calculate time since animation started (after delay)
         t = max(0.0, self._elapsed - self.delay)
+        # Apply easing function to get smooth interpolation factor
         self._t = self.ease(t / self.duration) if self.duration > 0 else 1.0
         return self.value
 
     @property
     def value(self):
+        """Get current interpolated value based on easing function."""
         return self.start + (self.end - self.start) * self._t
 
     @property
     def done(self):
+        """Check if animation has completed."""
         return self._elapsed >= self.delay + self.duration
 
     def reset(self):
+        """Reset animation to initial state."""
         self._elapsed = 0.0
         self._t = 0.0
 
 
-# Particle system for explosions, cheers, and other effects
+# ===== PARTICLE SYSTEM =====
 class Particle:
+    """
+    Single particle for visual effects (explosions, cheers, debris).
+    Simulates physics with gravity and velocity.
+    """
+
+    # Using __slots__ for memory efficiency (many particles may be created)
     __slots__ = ["x", "y", "vx", "vy", "col", "life", "decay", "sz", "grav"]
 
     def __init__(self, x, y, col, spd=None, sz=None, grav=0.09, life_range=(0.6, 1.0)):
+        """
+        Create a particle at a position with random velocity.
+
+        Args:
+            x, y: Starting position
+            col: Color tuple (R, G, B)
+            spd: Speed magnitude (random if None)
+            sz: Size in pixels (random if None)
+            grav: Gravity acceleration (default 0.09)
+            life_range: (min_life, max_life) tuple in seconds
+        """
+        # Random emission direction (full circle)
         a = random.uniform(0, math.tau)
+        # Random or specified speed
         s = spd if spd is not None else random.uniform(2, 6)
+        # Position
         self.x, self.y = float(x), float(y)
+        # Velocity components with upward bias
         self.vx, self.vy = math.cos(a) * s, math.sin(a) * s - random.uniform(0.5, 2)
+        # Color
         self.col = col
+        # Life span in seconds
         self.life = random.uniform(*life_range)
+        # How quickly particle fades
         self.decay = random.uniform(0.018, 0.045)
+        # Size in pixels
         self.sz = sz if sz is not None else random.uniform(2.5, 6.5)
+        # Gravity acceleration
         self.grav = grav
 
     def tick(self, dt):
-        self.x += self.vx
-        self.y += self.vy
-        self.vy += self.grav
-        self.life -= self.decay
-        return self.life > 0
+        """
+        Update particle position and life.
+
+        Args:
+            dt: Delta time in seconds
+
+        Returns:
+            True if particle is still alive, False if it should be removed
+        """
+        self.x += self.vx  # Update X position
+        self.y += self.vy  # Update Y position
+        self.vy += self.grav  # Apply gravity to Y velocity
+        self.life -= self.decay  # Decrease remaining life
+        return self.life > 0  # Return alive status
 
     def draw(self, surf):
+        """
+        Draw particle on surface with fade effect.
+        Size and opacity scale with remaining life.
+
+        Args:
+            surf: Surface to draw on
+        """
+        # Size shrinks as particle ages
         s = max(1, int(self.sz * self.life))
+        # Opacity fades as particle ages
         a = min(255, int(240 * self.life))
+        # Create temporary surface for particle
         t = pygame.Surface((s * 2 + 2, s * 2 + 2), pygame.SRCALPHA)
+        # Draw particle circle on temporary surface
         pygame.draw.circle(t, (*self.col[:3], a), (s + 1, s + 1), s)
+        # Blit to main surface
         surf.blit(t, (int(self.x) - s, int(self.y) - s))
 
 
 def emit(particles, x, y, col, n=20, spd=(1.5, 6), sz=(2, 8)):
+    """
+    Emit multiple particles at a location.
+
+    Args:
+        particles: List to append particles to
+        x, y: Emission center position
+        col: Particle color (R, G, B)
+        n: Number of particles to emit
+        spd: (min_speed, max_speed) tuple
+        sz: (min_size, max_size) tuple
+    """
     for _ in range(n):
         particles.append(
             Particle(x, y, col, spd=random.uniform(*spd), sz=random.uniform(*sz))
@@ -281,136 +538,258 @@ def emit(particles, x, y, col, n=20, spd=(1.5, 6), sz=(2, 8)):
 
 
 def confetti_burst(particles, cx, cy, n=80):
+    """
+    Create a celebratory confetti burst effect.
+
+    Args:
+        particles: List to append particles to
+        cx, cy: Center position of burst
+        n: Number of particles (default 80 for full effect)
+    """
+    # Select colors for confetti
     colors = [P0, P1, GOLD_C, ACCENT_BLU, TEXT_PRI, SUCCESS]
     for _ in range(n):
+        # Random position around center
         x = cx + random.randint(-180, 180)
         y = cy + random.randint(-100, 100)
+        # Emit particle with random color
         emit(particles, x, y, random.choice(colors), n=1, spd=(2, 8), sz=(3, 9))
 
 
-# HP bar component with dynamic color, shine, and low-health glow
+# ===== HP BAR RENDERING =====
 def draw_hp_bar(surf, x, y, w, h, val, mx, accent=None):
+    """
+    Draw an animated health bar with dynamic color and effects.
+    Uses a 3-tier color system: Red (low) -> Yellow (mid) -> Green (high)
+    Includes shine effect and glow when health is critically low.
+
+    Args:
+        surf: Surface to draw on
+        x, y: Top-left position of health bar
+        w: Width of health bar in pixels
+        h: Height of health bar in pixels
+        val: Current health value
+        mx: Maximum health value
+        accent: Optional accent color for glow effect
+    """
+    # Calculate health as a ratio (0.0 - 1.0)
     ratio = max(0.0, min(1.0, val / mx))
-    # Track
+
+    # Draw background track (always visible)
     rrect(surf, SURFACE, pygame.Rect(x, y, w, h), h // 2)
+
     if ratio > 0:
+        # Determine color based on health level
         col = hp_col(ratio)
+        # Calculate filled width
         fw = max(h, int(w * ratio))
+        # Draw filled portion
         rrect(surf, col, pygame.Rect(x, y, fw, h), h // 2)
-        # Shine
+
+        # Add shine effect (highlight on the filled portion)
         if fw > 12:
             shine = pygame.Surface((fw // 3, h), pygame.SRCALPHA)
-            shine.fill((*TEXT_PRI, 30))
+            shine.fill((*TEXT_PRI, 30))  # Semi-transparent white
             surf.blit(shine, (x + fw // 3, y))
-        # Glow when low
+
+        # Add glow effect when health is critically low
         if ratio < 0.3 and accent:
             glow_behind(surf, col, pygame.Rect(x, y, fw, h), 4, 40, h // 2)
+
+    # Draw border
     rrect_border(surf, OUTLINE, pygame.Rect(x, y, w, h), h // 2, 1)
 
 
-# Network 
+# ===== NETWORKING THREAD =====
 class NetThread(threading.Thread):
+    """
+    Background thread for handling network communication.
+    Manages socket connection, sending and receiving messages.
+    Uses JSON protocol over TCP.
+    """
+
     def __init__(self, host, port, q):
-        super().__init__(daemon=True)
+        """
+        Initialize network thread.
+
+        Args:
+            host: Server hostname or IP address
+            port: Server port number
+            q: Queue to receive messages from socket
+        """
+        super().__init__(daemon=True)  # Daemon thread exits when main thread exits
         self.host, self.port, self.q = host, port, q
-        self._sock = None
-        self._sq = queue.Queue()
-        self._buf = b""
-        self.ok = False
+        self._sock = None  # Socket connection
+        self._sq = queue.Queue()  # Send queue (thread-safe outgoing message buffer)
+        self._buf = b""  # Receive buffer for incomplete messages
+        self.ok = False  # Connection status flag
 
     def run(self):
+        """
+        Main thread loop: establish connection and start receive/send loops.
+        """
         try:
+            # Create and connect socket
             self._sock = socket.socket()
             self._sock.connect((self.host, self.port))
-            self.ok = True
+            self.ok = True  # Mark connection as successful
+
+            # Start send loop in separate thread
             threading.Thread(target=self._send_loop, daemon=True).start()
+            # Start receive loop (blocking)
             self._recv_loop()
         except Exception as e:
+            # Report connection error to main thread
             self.q.put({"type": "_ERR", "reason": str(e)})
 
     def _recv_loop(self):
+        """
+        Continuously receive and parse JSON messages from server.
+        Messages are newline-delimited.
+        """
         while True:
             try:
+                # Receive data from socket
                 chunk = self._sock.recv(4096)
             except:
+                # Socket error occurred
                 self.q.put({"type": "_ERR", "reason": "Disconnected"})
                 return
+
             if not chunk:
+                # Empty chunk means server closed connection
                 self.q.put({"type": "_ERR", "reason": "Server closed"})
                 return
+
+            # Add received data to buffer
             self._buf += chunk
+
+            # Process all complete messages (delimited by newline)
             while b"\n" in self._buf:
                 line, self._buf = self._buf.split(b"\n", 1)
                 try:
+                    # Parse JSON and put message in receive queue
                     self.q.put(json.loads(line.decode("utf-8")))
                 except:
-                    pass
+                    pass  # Ignore malformed messages
 
     def _send_loop(self):
+        """
+        Continuously send messages from send queue to server.
+        """
         while True:
+            # Get message from send queue (blocks until available)
             m = self._sq.get()
             if m is None:
+                # None is a signal to stop
                 break
             try:
+                # Convert to JSON and send with newline delimiter
                 self._sock.sendall((json.dumps(m) + "\n").encode("utf-8"))
             except:
+                # Send error, stop loop
                 break
 
     def send(self, m):
+        """
+        Queue a message to be sent to server.
+
+        Args:
+            m: Message dict to send
+        """
         if self.ok:
             self._sq.put(m)
 
 
-# Input field
+# ===== TEXT INPUT FIELD UI COMPONENT =====
 class TextField:
+    """
+    Animated text input field with focus states and visual feedback.
+    Supports placeholder text, character limits, and cursor animation.
+    """
+
     def __init__(self, rect, F, placeholder="", maxlen=40):
+        """
+        Create a text input field.
+
+        Args:
+            rect: Pygame Rect for field position and size
+            F: Font dictionary (from load_fonts())
+            placeholder: Placeholder text when field is empty
+            maxlen: Maximum text length allowed
+        """
         self.rect = pygame.Rect(rect)
-        self.F = F
+        self.F = F  # Font dictionary reference
         self.placeholder = placeholder
         self.maxlen = maxlen
-        self.text = ""
-        self.focused = False
-        self._cursor = True
-        self._cursor_t = 0
+        self.text = ""  # Current input text
+        self.focused = False  # Is field currently focused?
+        self._cursor = True  # Cursor visibility (blinks)
+        self._cursor_t = 0  # Last cursor toggle time
+        # Animate focus state (unfocused -> focused)
         self._focus_tween = Tween(0, 1, 0.2, easeout3)
 
     def handle(self, ev):
+        """
+        Process input events (mouse clicks, keyboard input).
+
+        Args:
+            ev: Pygame event
+
+        Returns:
+            True if Enter/Return was pressed (form submission)
+        """
         if ev.type == pygame.MOUSEBUTTONDOWN:
+            # Check if clicked inside field
             prev = self.focused
             self.focused = self.rect.collidepoint(ev.pos)
+            # Restart focus animation if just focused
             if self.focused and not prev:
                 self._focus_tween = Tween(0, 1, 0.2, easeout3)
+
         if ev.type == pygame.KEYDOWN and self.focused:
             if ev.key == pygame.K_BACKSPACE:
+                # Delete last character
                 self.text = self.text[:-1]
             elif ev.key not in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_TAB):
+                # Add printable character (if under max length)
                 if len(self.text) < self.maxlen and ev.unicode.isprintable():
                     self.text += ev.unicode
+            # Return True if Enter was pressed (for form submission)
             return ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER)
         return False
 
     def draw(self, surf, dt, label=None):
+        """
+        Draw the text field with animation.
+
+        Args:
+            surf: Surface to draw on
+            dt: Delta time for animation
+            label: Optional label text above field
+        """
+        # Update focus animation
         fv = self._focus_tween.update(dt)
 
-        # Label
+        # Draw optional label above field
         if label:
-            lc = lerp(TEXT_TER, TEXT_SEC, fv)
+            lc = lerp(TEXT_TER, TEXT_SEC, fv)  # Animate label color
             lt = self.F["sm"].render(label, True, lc)
             surf.blit(lt, (self.rect.x, self.rect.y - lt.get_height() - 7))
 
-        # Glow
+        # Draw glow effect when focused
         if fv > 0.05:
             glow_behind(surf, ACCENT_BLU, self.rect, int(20 * fv), int(45 * fv), 10)
 
-        # Background
+        # Draw background (animates from SURFACE to SURFACE3 when focused)
         bg = lerp(SURFACE, SURFACE3, fv)
         rrect(surf, bg, self.rect, 10)
 
-        # Border — animates from dim to accent
+        # Draw border (animates from OUTLINE to ACCENT_BLU when focused)
         border_col = lerp(OUTLINE, ACCENT_BLU, fv)
         rrect_border(surf, border_col, self.rect, 10, 2)
 
-        # Text or placeholder
+        # Draw text or placeholder
         if self.text:
             ts = self.F["body"].render(self.text, True, TEXT_PRI)
             surf.blit(ts, (self.rect.x + 16, self.rect.centery - ts.get_height() // 2))
@@ -418,30 +797,54 @@ class TextField:
             ph = self.F["body"].render(self.placeholder, True, TEXT_DIS)
             surf.blit(ph, (self.rect.x + 16, self.rect.centery - ph.get_height() // 2))
 
-        # Cursor
+        # Draw blinking cursor when focused
         if self.focused:
             now = pygame.time.get_ticks()
+            # Toggle cursor every 530ms
             if now - self._cursor_t > 530:
                 self._cursor = not self._cursor
                 self._cursor_t = now
+            # Draw cursor line
             if self._cursor:
+                # Position cursor after text
                 cx2 = self.rect.x + 16 + self.F["body"].size(self.text)[0] + 1
                 cy2 = self.rect.centery
                 pygame.draw.line(surf, ACCENT_BLU, (cx2, cy2 - 10), (cx2, cy2 + 10), 2)
 
 
-# Button
+# ===== BUTTON UI COMPONENT =====
 class Button:
+    """
+    Interactive button with hover and press animations.
+    Supports multiple visual styles (primary, secondary, danger, etc.).
+    """
+
     def __init__(self, rect, text, F, variant="primary"):
+        """
+        Create a button.
+
+        Args:
+            rect: Pygame Rect for button position and size
+            text: Button label text
+            F: Font dictionary (from load_fonts())
+            variant: Button style - "primary", "secondary", "danger", "accent", "cancel"
+        """
         self.rect = pygame.Rect(rect)
         self.text = text
         self.F = F
         self.variant = variant
+        # Animate hover state
         self._hover_t = Tween(0, 1, 0.15, easeout3)
-        self._press_t = 0
-        self._hovered = False
+        self._press_t = 0  # Time of last button press
+        self._hovered = False  # Is mouse currently over button?
 
     def _colors(self):
+        """
+        Get color scheme for button variant.
+
+        Returns:
+            Tuple of (background_color, text_color, glow_color)
+        """
         v = self.variant
         if v == "primary":
             return P0, BG, P0_GLOW
@@ -456,37 +859,68 @@ class Button:
         return SURFACE3, TEXT_SEC, OUTLINE2
 
     def handle(self, ev):
+        """
+        Process input events (mouse hover and click).
+
+        Args:
+            ev: Pygame event
+
+        Returns:
+            True if button was clicked
+        """
         if ev.type == pygame.MOUSEMOTION:
+            # Check if mouse is over button
             prev = self._hovered
             self._hovered = self.rect.collidepoint(ev.pos)
+            # Restart hover animation if state changed
             if self._hovered != prev:
                 self._hover_t = Tween(
                     0 if self._hovered else 1, 1 if self._hovered else 0, 0.15, easeout3
                 )
+
         if ev.type == pygame.MOUSEBUTTONDOWN and self.rect.collidepoint(ev.pos):
+            # Button was clicked
             self._press_t = pygame.time.get_ticks()
             return True
+
         return False
 
     def draw(self, surf, dt):
+        """
+        Draw the button with animations and effects.
+
+        Args:
+            surf: Surface to draw on
+            dt: Delta time for animations
+        """
+        # Update hover animation
         hv = self._hover_t.update(dt)
+        # Check if button was recently pressed (within 130ms)
         pressed = pygame.time.get_ticks() - self._press_t < 130
+
+        # Get color scheme
         bg, fg, glow_c = self._colors()
 
+        # Interpolate background color based on hover state
         col = lerp(bg, lerp(bg, TEXT_PRI, 0.15), hv)
+        # Darken when pressed
         if pressed:
             col = lerp(col, BG, 0.35)
 
+        # Draw glow effect on hover
         if hv > 0.05:
             glow_behind(surf, glow_c, self.rect, int(18 * hv), int(40 * hv), 10)
 
+        # Draw button background
         rrect(surf, col, self.rect, 10)
 
+        # Draw button border (style depends on variant)
         if self.variant == "secondary":
             rrect_border(surf, lerp(OUTLINE, OUTLINE2, hv), self.rect, 10, 1)
         if self.variant == "cancel":
             rrect_border(surf, DANGER, self.rect, 10, 1)
 
+        # Draw button text centered
         ts = self.F["h2"].render(self.text, True, fg)
         surf.blit(
             ts,
@@ -497,64 +931,114 @@ class Button:
         )
 
 
-# Scanlines (subtle CRT effect)
-_SL = None
+# ===== SCANLINES EFFECT (CRT AESTHETIC) =====
+_SL = None  # Global scanlines surface (cached)
 
 
 def scanlines(surf):
+    """
+    Apply subtle CRT scanlines effect to surface.
+    Creates retro/arcade aesthetic.
+    Caches scanlines surface for efficiency.
+
+    Args:
+        surf: Surface to apply scanlines to
+    """
     global _SL
     w, h = surf.get_size()
+    # Recreate scanlines if surface size changed
     if _SL is None or _SL.get_size() != (w, h):
         _SL = pygame.Surface((w, h), pygame.SRCALPHA)
+        # Draw horizontal lines every 4 pixels
         for y in range(0, h, 4):
-            pygame.draw.line(_SL, (0, 0, 0, 12), (0, y), (w, y))
+            pygame.draw.line(_SL, (0, 0, 0, 12), (0, y), (w, y))  # Subtle black lines
+    # Apply cached scanlines to surface
     surf.blit(_SL, (0, 0))
 
 
-# Main client with pygame
+# ===== MAIN GAME CLIENT CLASS =====
 class Arena:
+    """
+    Main game client application.
+    Handles UI rendering, network communication, game logic, and state management.
+    Uses Pygame for graphics and threading for network I/O.
+    """
+
     def __init__(self):
+        """
+        Initialize the game client.
+        Sets up Pygame, loads fonts, creates UI components, and initializes game state.
+        """
+        # Initialize Pygame subsystems
         pygame.init()
-        pygame.mixer.init()
+        pygame.mixer.init()  # Sound system
+
+        # Create display window
         self.screen = pygame.display.set_mode((WIN_W, WIN_H))
         pygame.display.set_caption("Pithon Arena")
+
+        # Game timing
         self.clock = pygame.time.Clock()
+        self._dt = 0.0  # Delta time (frame duration)
+        self._t = 0.0  # Total elapsed time
+
+        # Load all fonts
         self.F = load_fonts()
         self._music_playing = False
         self._load_music()
-        self._dt = 0.0
-        self._t = 0.0
 
-        # Net
-        self.net = None
-        self.q = queue.Queue()
+        # ===== NETWORKING STATE =====
+        self.net = None  # Network thread reference
+        self.q = queue.Queue()  # Message queue from network thread
 
-        # State
-        self.state = S_CONNECT
-        self.username = None
-        self.pid = None
-        self.is_fan = False
-        self.gdata = None
-        self.gover = None
-        self.lobby_list = []
-        self.ready_list = []
-        self.i_ready = False
-        self.chat_log = []
-        self._ucols = {}
-        self.cheers = []
-        self.particles = []
-        self.countdown = None
-        self._cd_t = 0.0
-        self.conn_msg = ""
-        self.conn_ok = False
-        self._dmg_flash = [0.0, 0.0]
-        self._prev_hp = [None, None]
-        self._shake = 0.0
-        self._shake_off = (0, 0)
-        self._screen_alpha = Tween(0, 1, 0.4, easeout3)
+        # ===== GAME STATE =====
+        self.state = S_CONNECT  # Current game state (connect/lobby/game/over)
+
+        # ===== PLAYER STATE =====
+        self.username = None  # Player's username
+        self.pid = None  # Player ID (0 or 1, None if spectating)
+        self.is_fan = False  # Are we spectating?
+        self._my_color = [0, 220, 120]  # Player's selected snake color
+
+        # ===== GAME DATA =====
+        self.gdata = None  # Current game state from server
+        self.gover = None  # Game over data from server
+        self.countdown = None  # Countdown before game start
+        self._cd_t = 0.0  # Countdown start time
+
+        # ===== LOBBY STATE =====
+        self.lobby_list = []  # List of players in lobby
+        self.ready_list = []  # List of players who are ready
+        self.i_ready = False  # Is current player ready?
+
+        # ===== COMMUNICATION STATE =====
+        self.chat_log = []  # Main game chat log
+        self.lobby_chat_log = []  # Separate lobby chat log
+        self._ucols = {}  # Username -> chat color mapping
+        self.cheers = []  # Recent cheer animations
+
+        # ===== VISUAL EFFECTS =====
+        self.particles = []  # Active particle effects
+        self._dmg_flash = [0.0, 0.0]  # Damage flash effect for each player
+        self._shake = 0.0  # Screen shake intensity
+        self._shake_off = (0, 0)  # Current shake offset
+        self._screen_alpha = Tween(0, 1, 0.4, easeout3)  # Fade-in effect
+
+        # ===== PLAYER STATS =====
         self._profile = {"wins": 0, "losses": 0, "streak": 0, "best_streak": 0}
-        self._pre_over_state = S_LOBBY  # state before game-over screen
+        self._prev_hp = [None, None]  # Previous HP for damage detection
 
+        # ===== UI STATE =====
+        self.conn_msg = ""  # Connection status message
+        self.conn_ok = False  # Connection successful?
+        self._music_muted = False  # Is music muted?
+        self._help_open = False  # Is help modal open?
+        self._custom_open = False  # Is customization modal open?
+        self._lobby_chat_open = False  # Is lobby chat modal open?
+        self._pre_over_state = S_LOBBY  # State before game-over screen
+
+        # ===== INPUT MAPPING =====
+        # Map keyboard keys to direction commands
         self.key_map = {
             pygame.K_UP: "UP",
             pygame.K_DOWN: "DOWN",
@@ -565,102 +1049,18 @@ class Arena:
             pygame.K_a: "LEFT",
             pygame.K_d: "RIGHT",
         }
-        self._build()
 
-    def _load_music(self):
-        import os
-
-        path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "Before_The_Timer_Ends.mp3"
-        )
-        try:
-            pygame.mixer.music.load(path)
-            pygame.mixer.music.set_volume(0.45)
-        except Exception as e:
-            print(f"[music] Could not load: {e}")
-
-    def _start_music(self):
-        if not self._music_playing:
-            try:
-                pygame.mixer.music.play(-1)  # -1 = loop forever
-                self._music_playing = True
-            except Exception as e:
-                print(f"[music] Could not play: {e}")
-
-    def _record_result(self, won: bool):
-        if won:
-            self._profile["wins"] += 1
-            self._profile["streak"] += 1
-            self._profile["best_streak"] = max(
-                self._profile["best_streak"], self._profile["streak"]
-            )
-        else:
-            self._profile["losses"] += 1
-            self._profile["streak"] = 0
-
-    def _build(self):
-        cx = WIN_W // 2
-        self.tf_host = TextField(
-            pygame.Rect(cx - 190, 316, 380, 50), self.F, "e.g.  127.0.0.1", 64
-        )
-        self.tf_port = TextField(pygame.Rect(cx - 190, 400, 170, 50), self.F, "Port", 6)
-        self.tf_user = TextField(
-            pygame.Rect(cx - 190, 484, 380, 50), self.F, "Username", 20
-        )
-        self.tf_host.text = "127.0.0.1"
-        self.tf_port.text = "5555"
-        self._cfields = [self.tf_host, self.tf_port, self.tf_user]
-
-        sx = GRID_W * CELL
-        self.tf_chat = TextField(
-            pygame.Rect(sx + 10, WIN_H - 52, SIDEBAR - 20, 42),
-            self.F,
-            "Send a message...",
-            150,
-        )
-        self.btn_connect = Button(
-            pygame.Rect(cx - 120, 556, 240, 54), "Connect", self.F, "primary"
-        )
-        self.btn_ready = Button(
-            pygame.Rect(100, 100, 240, 54), "Ready Up", self.F, "primary"
-        )
-        self.btn_watch = Button(
-            pygame.Rect(100, 100, 210, 44), "Watch as Fan", self.F, "secondary"
-        )
-        self.btn_rematch = Button(
-            pygame.Rect(100, 100, 220, 54), "Rematch", self.F, "primary"
-        )
-        self.btn_lobby = Button(
-            pygame.Rect(100, 100, 220, 54), "Back to Lobby", self.F, "secondary"
-        )
-        self.btn_mute = Button(
-            pygame.Rect(100, 100, 150, 36), "Mute Music", self.F, "secondary"
-        )
-        self.btn_help = Button(pygame.Rect(100, 100, 36, 36), "?", self.F, "secondary")
-        self.btn_customize = Button(
-            pygame.Rect(100, 100, 130, 36), "Customize", self.F, "secondary"
-        )
-        self.btn_chat_lobby = Button(
-            pygame.Rect(100, 100, 80, 36), "Chat", self.F, "secondary"
-        )
-        self._music_muted = False
-        self._help_open = False
-        self._custom_open = False
-        self._lobby_chat_open = False
-        self.lobby_chat_log = []  # separate log for lobby chat
-        self.tf_lobby_chat = TextField(
-            pygame.Rect(100, 100, 340, 44), self.F, "Say something...", 150
-        )
-        self._my_color = [0, 220, 120]  # default mint green
+        # ===== CHEER SYSTEM =====
         self.cheer_labels = ["Fire", "Hype", "GG", "Wow", "LOL"]
         self.cheer_colors = [
-            (220, 80, 40),
-            (80, 150, 255),
-            (50, 210, 100),
-            (220, 180, 30),
-            (200, 80, 220),
+            (220, 80, 40),  # Fire - orange/red
+            (80, 150, 255),  # Hype - blue
+            (50, 210, 100),  # GG - green
+            (220, 180, 30),  # Wow - yellow
+            (200, 80, 220),  # LOL - purple
         ]
-        # Color palette for customization
+
+        # Color palette for player customization
         self._color_palette = [
             [0, 220, 120],  # mint green (default)
             [255, 50, 90],  # vivid red
@@ -676,51 +1076,214 @@ class Arena:
             [255, 100, 100],  # salmon
         ]
 
-    # Loop
+        # Build UI components
+        self._build()
+
+    def _load_music(self):
+        """
+        Load background music from file.
+        Looks for "Before_The_Timer_Ends.mp3" in the same directory as this script.
+        Silently fails if music file is not found.
+        """
+        import os
+
+        # Get path to music file in same directory as script
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "Before_The_Timer_Ends.mp3"
+        )
+        try:
+            pygame.mixer.music.load(path)  # Load music file
+            pygame.mixer.music.set_volume(0.45)  # Set volume to 45%
+        except Exception as e:
+            print(f"[music] Could not load: {e}")
+
+    def _start_music(self):
+        """
+        Start playing background music in loop.
+        Only starts if not already playing.
+        """
+        if not self._music_playing:
+            try:
+                pygame.mixer.music.play(-1)  # -1 means loop forever
+                self._music_playing = True
+            except Exception as e:
+                print(f"[music] Could not play: {e}")
+
+    def _record_result(self, won: bool):
+        """
+        Record game result to player profile (wins/losses/streak tracking).
+
+        Args:
+            won: True if player won, False if they lost
+        """
+        if won:
+            # Update winning statistics
+            self._profile["wins"] += 1
+            self._profile["streak"] += 1
+            self._profile["best_streak"] = max(
+                self._profile["best_streak"], self._profile["streak"]
+            )
+        else:
+            # Update losing statistics
+            self._profile["losses"] += 1
+            self._profile["streak"] = 0  # Reset win streak
+
+    def _build(self):
+        """
+        Build and layout all UI components.
+        Creates text fields, buttons, and initializes layout positions.
+        """
+        # Calculate center X for centered UI elements
+        cx = WIN_W // 2
+
+        # ===== CONNECTION SCREEN COMPONENTS =====
+        # Host/IP address input field
+        self.tf_host = TextField(
+            pygame.Rect(cx - 190, 316, 380, 50), self.F, "e.g.  127.0.0.1", 64
+        )
+        # Port number input field
+        self.tf_port = TextField(pygame.Rect(cx - 190, 400, 170, 50), self.F, "Port", 6)
+        # Username input field
+        self.tf_user = TextField(
+            pygame.Rect(cx - 190, 484, 380, 50), self.F, "Username", 20
+        )
+        # Set default values
+        self.tf_host.text = "127.0.0.1"  # Default to localhost
+        self.tf_port.text = "5555"  # Default port
+        # Keep reference to connection fields for easy iteration
+        self._cfields = [self.tf_host, self.tf_port, self.tf_user]
+
+        # ===== GAME SCREEN COMPONENTS =====
+        # Chat message input field (bottom of sidebar)
+        sx = GRID_W * CELL  # X position where sidebar starts
+        self.tf_chat = TextField(
+            pygame.Rect(sx + 10, WIN_H - 52, SIDEBAR - 20, 42),
+            self.F,
+            "Send a message...",
+            150,
+        )
+
+        # ===== BUTTONS =====
+        # Connection screen: Connect button
+        self.btn_connect = Button(
+            pygame.Rect(cx - 120, 556, 240, 54), "Connect", self.F, "primary"
+        )
+        # Lobby: Ready Up button
+        self.btn_ready = Button(
+            pygame.Rect(100, 100, 240, 54), "Ready Up", self.F, "primary"
+        )
+        # Lobby: Watch as Fan button
+        self.btn_watch = Button(
+            pygame.Rect(100, 100, 210, 44), "Watch as Fan", self.F, "secondary"
+        )
+        # Game Over: Rematch button
+        self.btn_rematch = Button(
+            pygame.Rect(100, 100, 220, 54), "Rematch", self.F, "primary"
+        )
+        # Game Over: Back to Lobby button
+        self.btn_lobby = Button(
+            pygame.Rect(100, 100, 220, 54), "Back to Lobby", self.F, "secondary"
+        )
+        # Lobby: Mute/Unmute Music button
+        self.btn_mute = Button(
+            pygame.Rect(100, 100, 150, 36), "Mute Music", self.F, "secondary"
+        )
+        # Lobby: Help button (?)
+        self.btn_help = Button(pygame.Rect(100, 100, 36, 36), "?", self.F, "secondary")
+        # Lobby: Customize color button
+        self.btn_customize = Button(
+            pygame.Rect(100, 100, 130, 36), "Customize", self.F, "secondary"
+        )
+        # Lobby: Chat button
+        self.btn_chat_lobby = Button(
+            pygame.Rect(100, 100, 80, 36), "Chat", self.F, "secondary"
+        )
+
+        # ===== MODAL STATE =====
+        self._music_muted = False
+        self._help_open = False
+        self._custom_open = False
+        self._lobby_chat_open = False
+
+        # ===== LOBBY CHAT =====
+        self.lobby_chat_log = []  # Separate log for lobby chat messages
+        # Lobby chat input field
+        self.tf_lobby_chat = TextField(
+            pygame.Rect(100, 100, 340, 44), self.F, "Say something...", 150
+        )
+
+    # ===== MAIN GAME LOOP =====
     def run(self):
+        """
+        Main game loop: handles timing, networking, input, and rendering.
+        Runs at 60 FPS (capped by clock.tick).
+        """
         while True:
+            # Calculate delta time (in seconds)
             self._dt = self.clock.tick(FPS) / 1000.0
             self._t += self._dt
 
-            # Shake decay
+            # ===== EFFECTS UPDATES =====
+            # Decay screen shake effect
             self._shake = max(0.0, self._shake - self._dt * 9.0)
             if self._shake > 0:
+                # Generate random shake offset
                 a = random.uniform(0, math.tau)
                 amp = self._shake * 8
                 self._shake_off = (int(math.cos(a) * amp), int(math.sin(a) * amp))
             else:
                 self._shake_off = (0, 0)
 
-            # Damage flash decay
+            # Decay damage flash effects for both players
             for i in range(2):
                 self._dmg_flash[i] = max(0.0, self._dmg_flash[i] - self._dt * 2.8)
 
+            # ===== NETWORK MESSAGE PROCESSING =====
+            # Process all queued messages from network thread
             while not self.q.empty():
                 self._on(self.q.get_nowait())
+
+            # ===== INPUT HANDLING =====
             self._events()
+
+            # ===== PARTICLE UPDATES =====
+            # Update particles and remove dead ones
             self.particles = [p for p in self.particles if p.tick(self._dt)]
+
+            # ===== RENDERING =====
             self._draw()
             pygame.display.flip()
 
-    # Messages
+    # ===== MESSAGE HANDLERS =====
     def _on(self, msg):
+        """
+        Process incoming network messages from server.
+        Routes messages to appropriate state handlers.
+
+        Args:
+            msg: Message dict from server
+        """
         t = msg.get("type")
         if t == "_ERR":
+            # Connection/network error
             self.conn_msg = msg.get("reason", "Error")
             self.conn_ok = False
             self.state = S_CONNECT
             self._fade_in()
         elif t == MSG_JOIN_OK:
+            # Successfully connected to server
             self.username = msg["username"]
             self.state = S_LOBBY
             self._fade_in()
-            self._start_music()
+            self._start_music()  # Start background music
             # Share our local stats with the server immediately
             self._share_stats()
         elif t == MSG_JOIN_ERR:
+            # Connection attempt failed
             self.conn_msg = msg.get("reason", "Error")
             self.conn_ok = False
         elif t == MSG_PLAYER_LIST:
+            # Updated lobby player list
             self.lobby_list = msg.get("players", [])
             # lobby_list is now a list of dicts: {name, wins, losses, streak, color}
         elif t == MSG_READY_STATUS:
@@ -742,19 +1305,24 @@ class Arena:
             self.gover = None
             self._fade_in()
         elif t == MSG_GAME_STATE:
+            # Game state update (occurs every frame during game)
             if self.gdata:
+                # Check each player for damage
                 for i, sn in enumerate(msg.get("snakes", [])):
                     old = self._prev_hp[i]
                     new = sn.get("health", 0)
                     if old is not None and new < old:
-                        self._dmg_flash[i] = 1.0
-                        self._shake = min(1.0, self._shake + 0.55)
+                        # Player took damage!
+                        self._dmg_flash[i] = 1.0  # Activate damage flash effect
+                        self._shake = min(1.0, self._shake + 0.55)  # Add screen shake
                         body = sn.get("body", [])
                         if body:
+                            # Emit particles at snake head position
                             hx, hy = body[0]
                             sx2 = hx * CELL + CELL // 2
                             sy2 = hy * CELL + TOP_H + CELL // 2
-                            col = [P0, P1][i]
+                            col = [P0, P1][i]  # Use player color
+                            # Damage particles
                             emit(
                                 self.particles,
                                 sx2,
@@ -764,6 +1332,7 @@ class Arena:
                                 spd=(2, 5),
                                 sz=(3, 6),
                             )
+                            # White sparks
                             emit(
                                 self.particles,
                                 sx2,
@@ -776,62 +1345,81 @@ class Arena:
                     self._prev_hp[i] = new
             self.gdata = msg
         elif t == MSG_COUNTDOWN:
+            # Countdown before game starts (3...2...1...)
             self.countdown = msg.get("count")
             self._cd_t = self._t
         elif t == MSG_GAME_OVER:
+            # Game ended
             self.gover = msg
-            self._pre_over_state = self.state  # remember where we came from
+            self._pre_over_state = self.state  # Remember where we came from
             self.state = S_OVER
             self._fade_in()
             winner = msg.get("winner", "")
             if winner == self.username:
+                # We won! Trigger confetti celebration
                 confetti_burst(self.particles, GCX, GCY)
             # Record result for profile (players only, not fans/lobby)
             if self.pid is not None and self.username and winner and winner != "draw":
                 self._record_result(winner == self.username)
                 self._share_stats()
         elif t == MSG_CHAT_RECV:
-            s = msg.get("from", "?")
-            tx = msg.get("text", "")
-            prv = msg.get("private", False)
+            # Chat message received
+            s = msg.get("from", "?")  # Sender name
+            tx = msg.get("text", "")  # Message text
+            prv = msg.get("private", False)  # Is it a private message?
+            # Assign color to player if first time seeing them
             if s not in self._ucols:
                 self._ucols[s] = CHAT_PALETTE[len(self._ucols) % len(CHAT_PALETTE)]
+            # Format entry with private message indicator if needed
             entry = (s, ("[PM] " if prv else "") + tx, self._ucols[s])
+            # Add to main chat log
             self.chat_log.append(entry)
             if len(self.chat_log) > 120:
-                self.chat_log.pop(0)
-            # Also mirror into lobby chat log
+                self.chat_log.pop(0)  # Keep chat log size manageable
+            # Also mirror into lobby chat log (for lobby screen display)
             self.lobby_chat_log.append(entry)
             if len(self.lobby_chat_log) > 80:
                 self.lobby_chat_log.pop(0)
         elif t == MSG_CHEER_RECV:
+            # Cheer/emoji reaction received
             self.cheers.append(
                 (
                     f"{msg.get('from','?')}: {msg.get('emoji','!')} for {msg.get('player','')}!",
-                    time.time() + 4.0,
+                    time.time() + 4.0,  # Display for 4 seconds
                 )
             )
 
     def _fade_in(self):
+        """Trigger fade-in animation when switching screens."""
         self._screen_alpha = Tween(0, 1, 0.35, easeout3)
 
-    # Events and input handling
+    # ===== EVENT AND INPUT HANDLING =====
     def _events(self):
+        """
+        Process all pending Pygame events (keyboard, mouse, etc.).
+        Routes events to appropriate UI components based on current game state.
+        """
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
+                # Window close button
                 pygame.quit()
                 sys.exit()
 
             if self.state == S_CONNECT:
+                # ===== CONNECTION SCREEN =====
+                # Handle text field inputs
                 for f in self._cfields:
-                    if f.handle(ev):
+                    if f.handle(ev):  # Return key pressed in field
                         self._connect()
                 if self.btn_connect.handle(ev):
                     self._connect()
 
             elif self.state == S_LOBBY:
+                # ===== LOBBY SCREEN =====
+                # Watch as Fan button
                 if self.btn_watch.handle(ev) and self.net:
                     self.net.send({"type": MSG_WATCH})
+                # Ready Up / Unready button
                 if self.btn_ready.handle(ev) and self.net:
                     if self.i_ready:
                         self.net.send({"type": MSG_UNREADY})
@@ -839,25 +1427,29 @@ class Arena:
                     else:
                         self.net.send({"type": MSG_READY})
                         self.i_ready = True
+                # Mute/Unmute Music button
                 if self.btn_mute.handle(ev):
                     self._music_muted = not self._music_muted
                     if self._music_muted:
                         pygame.mixer.music.set_volume(0)
                     else:
                         pygame.mixer.music.set_volume(0.45)
+                # Help modal button
                 if self.btn_help.handle(ev):
                     self._help_open = not self._help_open
                     self._custom_open = False
                     self._lobby_chat_open = False
+                # Customize button
                 if self.btn_customize.handle(ev):
                     self._custom_open = not self._custom_open
                     self._help_open = False
                     self._lobby_chat_open = False
+                # Lobby Chat button
                 if self.btn_chat_lobby.handle(ev):
                     self._lobby_chat_open = not self._lobby_chat_open
                     self._help_open = False
                     self._custom_open = False
-                # Lobby chat input
+                # Lobby chat input handling
                 if self._lobby_chat_open:
                     if self.tf_lobby_chat.handle(ev):
                         self._send_lobby_chat()
@@ -963,12 +1555,21 @@ class Arena:
                     self._to_lobby()
 
     def _reset_button_hovers(self):
+        """
+        Reset hover state of all buttons to unpressed.
+        Used when transitioning between states to clear any lingering hover effects.
+        """
         for attr in vars(self).values():
             if isinstance(attr, Button):
+                # Reset button to unhovered state without animation
                 attr._hovered = False
                 attr._hover_t = Tween(1, 0, 0.15, easeout3)
 
     def _share_stats(self):
+        """
+        Send player's profile statistics to server.
+        Updates other players with our current wins/losses/streak info.
+        """
         if self.net:
             self.net.send(
                 {
@@ -980,80 +1581,125 @@ class Arena:
             )
 
     def _send_lobby_chat(self):
+        """
+        Send a chat message during lobby screen.
+        Message is broadcast to all connected players.
+        """
         txt = self.tf_lobby_chat.text.strip()
         if txt and self.net:
+            # Send as broadcast message (to=None means everyone)
             self.net.send({"type": MSG_CHAT, "to": None, "text": txt})
+        # Clear input field
         self.tf_lobby_chat.text = ""
 
     def _send_chat(self):
+        """
+        Send a chat message during game screen.
+        Supports /pm username message for private messages.
+        """
         txt = self.tf_chat.text.strip()
         if txt and self.net:
             if txt.startswith("/pm "):
-                p = txt[4:].split(" ", 1)
+                # Parse private message format
+                p = txt[4:].split(" ", 1)  # Split into [username, message]
                 if len(p) == 2:
+                    # Send private message to specific player
                     self.net.send({"type": MSG_CHAT, "to": p[0], "text": p[1]})
             else:
+                # Send public message
                 self.net.send({"type": MSG_CHAT, "to": None, "text": txt})
+        # Clear input field
         self.tf_chat.text = ""
 
     def _connect(self):
+        """
+        Initiate connection to game server.
+        Extracts host, port, and username from text fields.
+        Creates network thread to handle communication.
+        """
+        # Get connection parameters from input fields
         host = self.tf_host.text.strip()
         port = self.tf_port.text.strip()
         user = self.tf_user.text.strip()
+
+        # Validate inputs
         if not host or not port or not user:
             self.conn_msg = "Please fill in all fields."
             self.conn_ok = False
             return
+
+        # Parse port number
         try:
             pn = int(port)
         except:
             self.conn_msg = "Port must be a number."
             self.conn_ok = False
             return
+
+        # Show connecting message
         self.conn_msg = "Connecting..."
         self.conn_ok = True
+
+        # Create and start network thread
         self.net = NetThread(host, pn, self.q)
         self.net.start()
 
+        # Send join request after socket stabilizes
         def _j():
+            # Wait for socket to connect before sending join message
             time.sleep(0.35)
             self.net.send({"type": MSG_JOIN, "username": user})
 
         threading.Thread(target=_j, daemon=True).start()
 
     def _to_lobby(self):
-        self.state = S_LOBBY
-        self.gdata = None
-        self.gover = None
-        self.pid = None
-        self.is_fan = False
-        self.countdown = None
-        self.i_ready = False
-        self.ready_list = []
-        self._help_open = False
+        """
+        Transition from game/game-over back to lobby screen.
+        Resets game state and shows fade-in animation.
+        """
+        self.state = S_LOBBY  # Switch to lobby state
+        self.gdata = None  # Clear game data
+        self.gover = None  # Clear game over data
+        self.pid = None  # Clear player ID
+        self.is_fan = False  # Clear fan status
+        self.countdown = None  # Clear countdown
+        self.i_ready = False  # Reset ready status
+        self.ready_list = []  # Clear ready list
+        self._help_open = False  # Close any open modals
         self._custom_open = False
         self._lobby_chat_open = False
         self._pre_over_state = S_LOBBY
-        self._fade_in()
+        self._fade_in()  # Trigger fade-in animation
 
-    # Drawing
+    # ===== DRAWING/RENDERING METHODS =====
     def _draw(self):
+        """
+        Master drawing function: dispatches to appropriate screen renderer.
+        Also applies global effects like scanlines, shake, and fade-in overlay.
+        """
         dt = self._dt
+        # Clear screen with background color
         self.screen.fill(BG)
 
+        # Render appropriate screen based on game state
         if self.state == S_CONNECT:
-            self._draw_connect()
+            self._draw_connect()  # Connection/login screen
         elif self.state == S_LOBBY:
-            self._draw_lobby()
+            self._draw_lobby()  # Lobby screen
         elif self.state in (S_GAME, S_OVER):
+            # Both game and game-over use game grid background
+            # Apply screen shake offset if active
             off = self._shake_off
             if off != (0, 0):
+                # Render to temporary surface and offset it
                 tmp = pygame.Surface((GRID_W * CELL, WIN_H))
                 tmp.fill(BG)
                 self._draw_grid(tmp, -off[0], -off[1])
                 self.screen.blit(tmp, off)
             else:
+                # No shake, render normally
                 self._draw_grid(self.screen, 0, 0)
+            # Draw top bar and sidebar only during active game
             self._draw_topbar()
             self._draw_sidebar()
             if self.countdown is not None and self.countdown > 0:
@@ -1082,6 +1728,11 @@ class Arena:
 
     # Connect screen
     def _draw_connect(self):
+        """
+        Render the connection/login screen.
+        Displays the game title, connection form (host/port/username), and status messages.
+        Animated background with snakes and ambient particles.
+        """
         t = self._t
         cx = WIN_W // 2
         dt = self._dt
@@ -1176,6 +1827,15 @@ class Arena:
 
     # Lobby screen
     def _draw_lobby(self):
+        """
+        Render the lobby screen where players gather before a match.
+        Shows:
+        - Player list with ready status, W/L records, and streaks
+        - "Ready Up" button to join the match queue
+        - "Watch" button to spectate ongoing games
+        - Color customization, help, and chat modals
+        - Music mute toggle
+        """
         t = self._t
         cx = WIN_W // 2
         dt = self._dt
@@ -1405,17 +2065,24 @@ class Arena:
             self._draw_lobby_chat_modal()
 
     def _lobby_chat_modal_rect(self):
+        """Helper: Calculate the screen position and size of the lobby chat modal."""
         mw, mh = 480, 520
         return pygame.Rect(WIN_W // 2 - mw // 2, WIN_H // 2 - mh // 2, mw, mh)
 
     def _lobby_cheer_rect(self, i):
+        """Helper: Calculate position of the i-th cheer button in lobby chat modal."""
         modal = self._lobby_chat_modal_rect()
         n = len(self.cheer_labels)
-        PAD = 14; bw = (modal.w - PAD*2 - (n-1)*6) // n
-        return pygame.Rect(modal.x + PAD + i*(bw+6),
-                           modal.bottom - 64, bw, 32)
+        PAD = 14
+        bw = (modal.w - PAD * 2 - (n - 1) * 6) // n
+        return pygame.Rect(modal.x + PAD + i * (bw + 6), modal.bottom - 64, bw, 32)
 
     def _draw_lobby_chat_modal(self):
+        """
+        Render the lobby chat modal dialog.
+        Displays recent chat messages from all connected players and a text input field.
+        Messages are color-coded by sender and show their username.
+        """
         t = self._t
         dt = self._dt
         modal = self._lobby_chat_modal_rect()
@@ -1467,9 +2134,9 @@ class Arena:
         CHEER_H = 32
         CHEER_GAP = 8
         log_top = modal.y + 58
-        log_bot = modal.bottom - INP_H - PAD*2
-        log_h   = log_bot - log_top
-        log_rect = pygame.Rect(modal.x+PAD, log_top, modal.w-PAD*2, log_h)
+        log_bot = modal.bottom - INP_H - PAD * 2
+        log_h = log_bot - log_top
+        log_rect = pygame.Rect(modal.x + PAD, log_top, modal.w - PAD * 2, log_h)
         rrect(self.screen, (4, 5, 12), log_rect, 8)
         rrect_border(self.screen, OUTLINE, log_rect, 8, 1)
 
@@ -1508,27 +2175,35 @@ class Arena:
         self.tf_lobby_chat.draw(self.screen, dt)
 
     def _help_modal_rect(self):
+        """Helper: Calculate the screen position and size of the help modal."""
         mw, mh = 560, 480
         return pygame.Rect(WIN_W // 2 - mw // 2, WIN_H // 2 - mh // 2, mw, mh)
 
     def _custom_modal_rect(self):
+        """Helper: Calculate the screen position and size of the color customization modal."""
         mw, mh = 400, 280
         return pygame.Rect(WIN_W // 2 - mw // 2, WIN_H // 2 - mh // 2, mw, mh)
 
     def _swatch_rect(self, i):
+        """Helper: Calculate position of the i-th color swatch in the customization modal."""
         modal = self._custom_modal_rect()
-        cols = 6
-        sw = 44
+        cols = 6  # 6 color swatches per row
+        sw = 44  # swatch width/height
         sh = 44
-        gap = 10
+        gap = 10  # spacing between swatches
         row = i // cols
         col = i % cols
         total_w = cols * sw + (cols - 1) * gap
-        ox = modal.x + (modal.w - total_w) // 2
+        ox = modal.x + (modal.w - total_w) // 2  # center the swatch grid
         oy = modal.y + 90
         return pygame.Rect(ox + col * (sw + gap), oy + row * (sh + gap), sw, sh)
 
     def _draw_custom_modal(self):
+        """
+        Render the color customization modal.
+        Displays a palette of 12 color swatches for the player to choose their snake color.
+        Shows current color selection and provides a click-to-select interface.
+        """
         t = self._t
         modal = self._custom_modal_rect()
 
@@ -1606,6 +2281,11 @@ class Arena:
         )
 
     def _draw_help_modal(self):
+        """
+        Render the help/mutations info modal.
+        Displays detailed descriptions of all three mutation types (Hot Sauce, Whipped Cream, Blueberry).
+        Explains their effects, duration, and strategic uses.
+        """
         t = self._t
         dt = self._dt
 
@@ -1737,15 +2417,25 @@ class Arena:
             hint, (modal.centerx - hint.get_width() // 2, modal.bottom - 22)
         )
 
-    # Grid / game world
+    # ===== GAME WORLD RENDERING =====
     def _draw_grid(self, surf, ox, oy):
+        """
+        Render the game grid background with checkerboard pattern and grid lines.
+        Also handles screen shake offset and damage flash effects.
+        Parameters:
+            surf: pygame surface to draw on
+            ox: x-offset (for screen shake)
+            oy: y-offset (for screen shake)
+        """
         gd = self.gdata
+        # Draw checkerboard background
         for x in range(GRID_W):
             for y in range(GRID_H):
                 c = GRID_EVEN if (x + y) % 2 == 0 else GRID_ODD
                 pygame.draw.rect(
                     surf, c, (x * CELL + ox, y * CELL + TOP_H + oy, CELL, CELL)
                 )
+        # Draw vertical gridlines
         for x in range(GRID_W + 1):
             pygame.draw.line(
                 surf,
@@ -1753,6 +2443,7 @@ class Arena:
                 (x * CELL + ox, TOP_H + oy),
                 (x * CELL + ox, TOP_H + GRID_H * CELL + oy),
             )
+        # Draw horizontal gridlines
         for y in range(GRID_H + 1):
             pygame.draw.line(
                 surf,
@@ -1802,9 +2493,18 @@ class Arena:
             surf.blit(ct, (tr.x + 12, tr.y + 5))
 
     def _draw_fire_splotch(self, surf, gd, ox, oy):
+        """
+        Render fire cells (from Hot Sauce mutation) and cream splotches (from Whipped Cream).
+        Fire cells flicker and fade over time.
+        Splotches are stationary cream-colored ellipses that slow opponents.
+        Parameters:
+            surf: pygame surface to draw on
+            gd: game data dict containing fire_cells and splotches arrays
+            ox, oy: screen offset for shake effect
+        """
         t = self._t
-        OWNER_TINT = [(255, 80, 40), (255, 40, 80)]
-        FIRE_COLS = [(255, 60, 0), (255, 130, 0), (255, 200, 30)]
+        OWNER_TINT = [(255, 80, 40), (255, 40, 80)]  # Red tints for P0/P1 fire
+        FIRE_COLS = [(255, 60, 0), (255, 130, 0), (255, 200, 30)]  # Flame gradients
 
         # Fire cells — flickering flame effect
         for fc in gd.get("fire_cells", []):
@@ -1839,6 +2539,15 @@ class Arena:
             surf.blit(s2, (sx2 * CELL + ox, sy2 * CELL + TOP_H + oy))
 
     def _draw_obstacles(self, surf, gd, ox, oy):
+        """
+        Render static obstacles (rocks and spikes) on the game grid.
+        Rocks are rounded rectangles with circular center detail.
+        Spikes are triangular pointed shapes.
+        Parameters:
+            surf: pygame surface to draw on
+            gd: game data dict containing obstacles array
+            ox, oy: screen offset for shake effect
+        """
         for obs in gd.get("obstacles", []):
             x, y = obs["pos"]
             k = obs.get("kind", "rock")
@@ -1849,13 +2558,24 @@ class Arena:
             rrect(surf, c, r, 4)
             cx2, cy2 = r.centerx, r.centery
             if k == "rock":
+                # Rock: draw concentric circles for a stone look
                 aacircle(surf, lerp(c, TEXT_PRI, 0.28), (cx2, cy2), CELL // 2 - 5)
                 aacircle(surf, c, (cx2, cy2), CELL // 2 - 8)
             else:
+                # Spike: draw upward-pointing triangle
                 pts = [(cx2, cy2 - 9), (cx2 - 6, cy2 + 7), (cx2 + 6, cy2 + 7)]
                 pygame.draw.polygon(surf, lerp(OBS_SPIKE, TEXT_PRI, 0.5), pts)
 
     def _draw_pies(self, surf, gd, ox, oy):
+        """
+        Render mutation pie pickups on the game grid.
+        Each pie type (Hot Sauce, Whipped Cream, Blueberry) has a distinct color and bobs up/down.
+        Includes glowing effect and single-letter label (H, W, B).
+        Parameters:
+            surf: pygame surface to draw on
+            gd: game data dict containing pies array
+            ox, oy: screen offset for shake effect
+        """
         t = self._t
         PIE_COLS = {
             "hotsauce": (255, 65, 30),  # vivid orange-red
@@ -1874,6 +2594,7 @@ class Arena:
             col = PIE_COLS.get(k, (200, 200, 200))
             glow = PIE_GLOW.get(k, (200, 200, 200))
             cx2 = px * CELL + CELL // 2 + ox
+            # Y position bobs up and down over time
             cy2 = (
                 py * CELL
                 + TOP_H
@@ -1895,6 +2616,16 @@ class Arena:
             surf.blit(lbl, (cx2 - lbl.get_width() // 2, cy2 - lbl.get_height() // 2))
 
     def _draw_snakes(self, surf, gd, ox, oy):
+        """
+        Render player snakes on the grid.
+        Handles body segments with fading opacity, mutations/powerups, and special states.
+        Supports: active snakes, dead snakes, invisible ghosts, shields, slow effects.
+        Draws head with eyes at the front (index 0) of the body.
+        Parameters:
+            surf: pygame surface to draw on
+            gd: game data dict containing snakes array
+            ox, oy: screen offset for shake effect
+        """
         for sn in gd.get("snakes", []):
             pid = sn.get("player_id", 0)
             body = sn["body"]
@@ -1905,22 +2636,27 @@ class Arena:
             mutation = sn.get("mutation")
             # Use per-snake color from server, fallback to defaults
             raw_col = sn.get("color", [[0, 220, 120], [255, 50, 90]][pid])
-            hc = tuple(raw_col) if alive else DEAD_C
-            bc = tuple(int(c * 0.65) for c in raw_col) if alive else (38, 40, 52)
-            gl = tuple(min(255, int(c * 1.25)) for c in raw_col)
+            hc = tuple(raw_col) if alive else DEAD_C  # Head color
+            bc = (
+                tuple(int(c * 0.65) for c in raw_col) if alive else (38, 40, 52)
+            )  # Body color (darker)
+            gl = tuple(
+                min(255, int(c * 1.25)) for c in raw_col
+            )  # Glow color (brighter)
 
             # Alpha for invisible snakes — ghost effect
             ghost_alpha = 60 if invisible else 255
 
+            # Draw each body segment from tail to head
             for i, (bx, by) in enumerate(reversed(body)):
                 idx = len(body) - 1 - i
-                is_hd = idx == 0
-                fade = max(0.25, 1.0 - idx * 0.05)
+                is_hd = idx == 0  # First segment is the head
+                fade = max(0.25, 1.0 - idx * 0.05)  # Tail segments fade out
                 c = lerp(DEAD_C, hc if is_hd else bc, fade)
                 r = pygame.Rect(
                     bx * CELL + 1 + ox, by * CELL + TOP_H + 1 + oy, CELL - 2, CELL - 2
                 )
-                br = 9 if is_hd else 4
+                br = 9 if is_hd else 4  # Head has larger border radius
 
                 if invisible:
                     # Draw as semi-transparent ghost
@@ -1935,6 +2671,7 @@ class Arena:
                 else:
                     rrect(surf, c, r, br)
 
+                # Draw head effects only on living snakes
                 if is_hd and alive:
                     if not invisible:
                         # Hot sauce — red glow aura
@@ -1951,11 +2688,23 @@ class Arena:
                         # Normal glow + border
                         glow_behind(surf, gl, r, br, 7, 40)
                         rrect_border(surf, gl, r, br, 1)
+                    # Draw direction indicator (eyes)
                     self._draw_eyes(
                         surf, r, sn["direction"], gl if not invisible else (*gl[:3], 60)
                     )
 
     def _draw_eyes(self, surf, r, d, glow):
+        """
+        Draw eyes on the snake head to indicate direction of movement.
+        Two eyes are positioned based on the snake's direction (RIGHT, LEFT, UP, DOWN).
+        Eyes are rendered as concentric circles: white background + colored pupil.
+        Parameters:
+            surf: pygame surface to draw on
+            r: head rectangle
+            d: direction string ("RIGHT", "LEFT", "UP", "DOWN")
+            glow: RGB color tuple for the eye pupils
+        """
+        # Eye positions for each direction
         offs = {
             "RIGHT": [(r.right - 7, r.top + 6), (r.right - 7, r.bottom - 9)],
             "LEFT": [(r.left + 4, r.top + 6), (r.left + 4, r.bottom - 9)],
@@ -1963,15 +2712,24 @@ class Arena:
             "DOWN": [(r.left + 6, r.bottom - 7), (r.right - 9, r.bottom - 7)],
         }
         for ex, ey in offs.get(d, []):
-            aacircle(surf, BG, (ex, ey), 3)
-            aacircle(surf, glow, (ex, ey), 2)
+            aacircle(surf, BG, (ex, ey), 3)  # White background
+            aacircle(surf, glow, (ex, ey), 2)  # Colored pupil
 
     # Top bar
     def _draw_topbar(self):
+        """
+        Render the game top bar showing:
+        - Player names, health bars, and alive status
+        - Active mutation badges (FIRE, INVIS, SHIELD, SLOW)
+        - Countdown timer in the center
+        - Spectator count
+        """
         t = self._t
+        # Semi-transparent background bar
         tb = pygame.Surface((GRID_W * CELL, TOP_H), pygame.SRCALPHA)
         tb.fill((4, 5, 10, 252))
         self.screen.blit(tb, (0, 0))
+        # Animated accent line at bottom of bar
         for px2 in range(GRID_W * CELL):
             a = int(70 * (0.5 + 0.5 * math.sin(px2 * 0.016 + t * 1.4)))
             c = lerp(ACCENT_BLU, P0, px2 / (GRID_W * CELL))
@@ -1985,6 +2743,7 @@ class Arena:
         snakes = gd.get("snakes", [])
         tl = gd.get("time_left", 0)
 
+        # Draw left and right player info
         for i in range(min(2, len(snakes))):
             sn = snakes[i]
             name = unames[i] if i < len(unames) else f"P{i+1}"
@@ -2069,8 +2828,15 @@ class Arena:
             aacircle(self.screen, BG, (wx - 10, wy + wt.get_height() // 2), 2)
             self.screen.blit(wt, (wx, wy))
 
-    # ── Sidebar ───────────────────────────────────────────────────────────────
+    # ===== SIDEBAR/CHAT RENDERING =====
     def _draw_sidebar(self):
+        """
+        Render the right sidebar showing:
+        - Player/spectator role indicator
+        - Chat message log with sender colors
+        - Chat input field
+        - Fan controls: cheer buttons and back-to-lobby button (if spectating)
+        """
         dt = self._dt
         sx = GRID_W * CELL
         sw = SIDEBAR
@@ -2188,6 +2954,7 @@ class Arena:
         self.screen.blit(ht, (sx + sw // 2 - ht.get_width() // 2, WIN_H - HNT + 2))
 
     def _cheer_rect(self, i, sx, y, sw, h):
+        """Helper: Calculate the position of the i-th cheer button in the sidebar."""
         n = len(self.cheer_labels)
         pad = 10
         bw = (sw - pad * 2 - (n - 1) * 4) // n
@@ -2195,11 +2962,17 @@ class Arena:
 
     # Countdown animation before game starts
     def _draw_countdown(self):
+        """
+        Render the game start countdown animation.
+        Shows large animated numbers (3, 2, 1) with expanding rings, fade effects,
+        and player matchup names. Includes "GET READY" and "VS" text.
+        """
         n = self.countdown
-        phase = min(1.0, self._t - self._cd_t)
+        phase = min(1.0, self._t - self._cd_t)  # Animation phase 0.0 to 1.0
         # Center exactly in the game grid
         gcx = GCX
         gcy = GCY
+        # Color changes for each countdown number
         COLS = {3: (220, 44, 68), 2: (220, 154, 28), 1: (32, 204, 84)}
         c = COLS.get(n, SUCCESS)
 
@@ -2274,8 +3047,17 @@ class Arena:
                 self.screen, (*c, la2), (min(lx1, lx2), gcy), (max(lx1, lx2), gcy), 2
             )
 
-    # Game over screen
+    # ===== GAME OVER SCREEN RENDERING =====
     def _draw_over(self):
+        """
+        Render the game over/results screen.
+        Shows:
+        - Winner announcement with matching glow
+        - Final health scores with health bars
+        - Match statistics (pies, mutations, damage, max length) with comparison bars
+        - Rematch/Back to Lobby buttons
+        - Chat sidebar (if applicable)
+        """
         t = self._t
         dt = self._dt
         gcx = (GRID_W * CELL) // 2
@@ -2283,8 +3065,9 @@ class Arena:
         go = self.gover or {}
         winner = go.get("winner", "draw")
         scores = go.get("scores", {})
-        stats = go.get("stats", {})
+        stats = go.get("stats", {})  # Per-player statistics
 
+        # Determine winner text and color
         if winner == "draw":
             wcol, wtxt = ACCENT_BLU, "DRAW!"
         elif winner == self.username:
@@ -2297,7 +3080,7 @@ class Arena:
         ov.fill((3, 4, 9, 220))
         self.screen.blit(ov, (0, 0))
 
-        # Main card 
+        # Main card
         cw, ch = 620, 500
         card = pygame.Rect(gcx - cw // 2, gcy - ch // 2, cw, ch)
         cs = pygame.Surface((cw, ch), pygame.SRCALPHA)
@@ -2308,7 +3091,7 @@ class Arena:
         rrect_border(self.screen, lerp(wcol, TEXT_PRI, pulse * 0.3), card, 14, 2)
         pygame.draw.rect(self.screen, wcol, (card.x, card.y, cw, 4), border_radius=14)
 
-        # Winner title 
+        # Winner title
         wt = self.F["title"].render(wtxt, True, wcol)
         glow_behind(
             self.screen,
@@ -2516,4 +3299,8 @@ class Arena:
 
 
 if __name__ == "__main__":
+    """
+    Application entry point: Create and run the game client.
+    Initializes the Arena (main game client) and starts the main game loop.
+    """
     Arena().run()
