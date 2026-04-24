@@ -553,7 +553,7 @@ class Arena:
         self._shake_off = (0, 0)
         self._screen_alpha = Tween(0, 1, 0.4, easeout3)
         self._profile = {"wins": 0, "losses": 0, "streak": 0, "best_streak": 0}
-        self._pre_over_state = S_LOBBY   # state before game-over screen
+        self._pre_over_state = S_LOBBY  # state before game-over screen
 
         self.key_map = {
             pygame.K_UP: "UP",
@@ -589,13 +589,14 @@ class Arena:
 
     def _record_result(self, won: bool):
         if won:
-            self._profile["wins"]        += 1
-            self._profile["streak"]      += 1
-            self._profile["best_streak"]  = max(
-                self._profile["best_streak"], self._profile["streak"])
+            self._profile["wins"] += 1
+            self._profile["streak"] += 1
+            self._profile["best_streak"] = max(
+                self._profile["best_streak"], self._profile["streak"]
+            )
         else:
             self._profile["losses"] += 1
-            self._profile["streak"]  = 0
+            self._profile["streak"] = 0
 
     def _build(self):
         cx = WIN_W // 2
@@ -646,7 +647,7 @@ class Arena:
         self._help_open = False
         self._custom_open = False
         self._lobby_chat_open = False
-        self.lobby_chat_log = []   # separate log for lobby chat
+        self.lobby_chat_log = []  # separate log for lobby chat
         self.tf_lobby_chat = TextField(
             pygame.Rect(100, 100, 340, 44), self.F, "Say something...", 150
         )
@@ -778,9 +779,9 @@ class Arena:
             self.countdown = msg.get("count")
             self._cd_t = self._t
         elif t == MSG_GAME_OVER:
-            self.gover      = msg
+            self.gover = msg
             self._pre_over_state = self.state  # remember where we came from
-            self.state      = S_OVER
+            self.state = S_OVER
             self._fade_in()
             winner = msg.get("winner", "")
             if winner == self.username:
@@ -865,14 +866,21 @@ class Arena:
                         for i, lbl in enumerate(self.cheer_labels):
                             br = self._lobby_cheer_rect(i)
                             if br.collidepoint(ev.pos) and self.net:
-                                self.net.send({"type": MSG_CHAT, "to": None,
-                                               "text": f"[Cheer] {lbl}!"})
+                                self.net.send(
+                                    {
+                                        "type": MSG_CHAT,
+                                        "to": None,
+                                        "text": f"[Cheer] {lbl}!",
+                                    }
+                                )
                         # Close button
                         mr = self._lobby_chat_modal_rect()
-                        close = pygame.Rect(mr.right-38, mr.y+10, 28, 28)
+                        close = pygame.Rect(mr.right - 38, mr.y + 10, 28, 28)
                         if close.collidepoint(ev.pos):
                             self._lobby_chat_open = False
-                        elif not mr.collidepoint(ev.pos) and not self.btn_chat_lobby.rect.collidepoint(ev.pos):
+                        elif not mr.collidepoint(
+                            ev.pos
+                        ) and not self.btn_chat_lobby.rect.collidepoint(ev.pos):
                             self._lobby_chat_open = False
                 # Modal interactions
                 if ev.type == pygame.MOUSEBUTTONDOWN:
@@ -962,12 +970,14 @@ class Arena:
 
     def _share_stats(self):
         if self.net:
-            self.net.send({
-                "type":   MSG_SHARE_STATS,
-                "wins":   self._profile.get("wins",   0),
-                "losses": self._profile.get("losses", 0),
-                "streak": self._profile.get("streak", 0),
-            })
+            self.net.send(
+                {
+                    "type": MSG_SHARE_STATS,
+                    "wins": self._profile.get("wins", 0),
+                    "losses": self._profile.get("losses", 0),
+                    "streak": self._profile.get("streak", 0),
+                }
+            )
 
     def _send_lobby_chat(self):
         txt = self.tf_lobby_chat.text.strip()
@@ -1234,17 +1244,17 @@ class Arena:
             for i, player in enumerate(self.lobby_list[:6]):
                 # Support both old (str) and new (dict) format
                 if isinstance(player, dict):
-                    name   = player.get("name", "?")
-                    wins   = player.get("wins",   0)
+                    name = player.get("name", "?")
+                    wins = player.get("wins", 0)
                     losses = player.get("losses", 0)
                     streak = player.get("streak", 0)
                 else:
-                    name   = player
-                    wins   = losses = streak = 0
+                    name = player
+                    wins = losses = streak = 0
 
-                ry    = panel.y + 62 + i * 42
+                ry = panel.y + 62 + i * 42
                 is_me = name == self.username
-                is_rdy= name in self.ready_list
+                is_rdy = name in self.ready_list
 
                 # Row background — taller to fit stats
                 row = pygame.Rect(panel.x + 10, ry, pw - 20, 36)
@@ -1266,9 +1276,9 @@ class Arena:
 
                 # W/L record
                 if wins + losses > 0:
-                    wl_col  = SUCCESS if wins >= losses else DANGER
-                    wl_txt  = f"{wins}W  {losses}L"
-                    wl_s    = self.F["xs"].render(wl_txt, True, wl_col)
+                    wl_col = SUCCESS if wins >= losses else DANGER
+                    wl_txt = f"{wins}W  {losses}L"
+                    wl_s = self.F["xs"].render(wl_txt, True, wl_col)
                     self.screen.blit(wl_s, (panel.x + 46, ry + 20))
 
                 # Streak pill
@@ -1281,7 +1291,7 @@ class Arena:
                 else:
                     stk_col = TEXT_TER
                     stk_txt = "NEW"
-                bs  = self.F["xs"].render(stk_txt, True, BG)
+                bs = self.F["xs"].render(stk_txt, True, BG)
                 bpw = bs.get_width() + 10
                 bpr = pygame.Rect(panel.right - 110, ry + 10, bpw, 16)
                 rrect(self.screen, stk_col, bpr, 4)
@@ -1291,12 +1301,17 @@ class Arena:
 
                 # Ready badge
                 if is_rdy:
-                    rb  = self.F["xs"].render("READY", True, GOLD_C)
+                    rb = self.F["xs"].render("READY", True, GOLD_C)
                     rbr = pygame.Rect(panel.right - 68, ry + 10, 56, 16)
                     rrect(self.screen, (38, 30, 0), rbr, 4)
                     rrect_border(self.screen, GOLD_C, rbr, 4, 1)
-                    self.screen.blit(rb, (rbr.centerx - rb.get_width()//2,
-                                         rbr.centery - rb.get_height()//2))
+                    self.screen.blit(
+                        rb,
+                        (
+                            rbr.centerx - rb.get_width() // 2,
+                            rbr.centery - rb.get_height() // 2,
+                        ),
+                    )
 
         # Status
         rc = len(self.ready_list)
@@ -1323,8 +1338,8 @@ class Arena:
 
         # Ready name pills
         for i, name in enumerate(self.ready_list[:2]):
-            c       = [P0, P1][i]
-            pill_w  = 180
+            c = [P0, P1][i]
+            pill_w = 180
             pill_r = pygame.Rect(
                 cx - pill_w // 2, panel.bottom + 116 + i * 32, pill_w, 26
             )
@@ -1391,17 +1406,19 @@ class Arena:
 
     def _lobby_chat_modal_rect(self):
         mw, mh = 480, 520
-        return pygame.Rect(WIN_W//2 - mw//2, WIN_H//2 - mh//2, mw, mh)
+        return pygame.Rect(WIN_W // 2 - mw // 2, WIN_H // 2 - mh // 2, mw, mh)
 
     def _lobby_cheer_rect(self, i):
         modal = self._lobby_chat_modal_rect()
         n = len(self.cheer_labels)
-        PAD = 14; bw = (modal.w - PAD*2 - (n-1)*6) // n
-        return pygame.Rect(modal.x + PAD + i*(bw+6),
-                           modal.bottom - 64, bw, 32)
+        PAD = 14
+        bw = (modal.w - PAD * 2 - (n - 1) * 6) // n
+        y = modal.bottom - 10 - 44 - 8 - 32
+        return pygame.Rect(modal.x + PAD + i * (bw + 6), y, bw, 32)
 
     def _draw_lobby_chat_modal(self):
-        t  = self._t; dt = self._dt
+        t = self._t
+        dt = self._dt
         modal = self._lobby_chat_modal_rect()
 
         # Backdrop
@@ -1415,8 +1432,9 @@ class Arena:
         self.screen.blit(cs, modal.topleft)
         pulse = 0.5 + 0.5 * math.sin(t * 1.8)
         top_col = lerp(ACCENT_BLU, CHEER_C, pulse)
-        pygame.draw.rect(self.screen, top_col,
-                         (modal.x, modal.y, modal.w, 3), border_radius=14)
+        pygame.draw.rect(
+            self.screen, top_col, (modal.x, modal.y, modal.w, 3), border_radius=14
+        )
         rrect_border(self.screen, OUTLINE, modal, 14, 1)
 
         # Title
@@ -1424,28 +1442,42 @@ class Arena:
         self.screen.blit(title, (modal.x + 18, modal.y + 16))
 
         # Close button
-        close = pygame.Rect(modal.right-38, modal.y+10, 28, 28)
+        close = pygame.Rect(modal.right - 38, modal.y + 10, 28, 28)
         rrect(self.screen, SURFACE3, close, 6)
         rrect_border(self.screen, OUTLINE2, close, 6, 1)
-        cx2 = close.centerx; cy2 = close.centery
-        pygame.draw.line(self.screen, TEXT_SEC, (cx2-6,cy2-6),(cx2+6,cy2+6), 2)
-        pygame.draw.line(self.screen, TEXT_SEC, (cx2+6,cy2-6),(cx2-6,cy2+6), 2)
+        cx2 = close.centerx
+        cy2 = close.centery
+        pygame.draw.line(
+            self.screen, TEXT_SEC, (cx2 - 6, cy2 - 6), (cx2 + 6, cy2 + 6), 2
+        )
+        pygame.draw.line(
+            self.screen, TEXT_SEC, (cx2 + 6, cy2 - 6), (cx2 - 6, cy2 + 6), 2
+        )
 
-        pygame.draw.line(self.screen, OUTLINE,
-                         (modal.x+14, modal.y+52), (modal.right-14, modal.y+52), 1)
+        pygame.draw.line(
+            self.screen,
+            OUTLINE,
+            (modal.x + 14, modal.y + 52),
+            (modal.right - 14, modal.y + 52),
+            1,
+        )
 
         # Chat log area
         PAD = 10
         INP_H = 44
+        CHEER_H = 32
+        CHEER_GAP = 8
         log_top = modal.y + 58
-        log_bot = modal.bottom - INP_H - PAD*2
-        log_h   = log_bot - log_top
-        log_rect = pygame.Rect(modal.x+PAD, log_top, modal.w-PAD*2, log_h)
+        cheer_y = modal.bottom - PAD - INP_H - CHEER_GAP - CHEER_H
+        log_bot = cheer_y - PAD
+        log_h = log_bot - log_top
+        log_rect = pygame.Rect(modal.x + PAD, log_top, modal.w - PAD * 2, log_h)
         rrect(self.screen, (4, 5, 12), log_rect, 8)
         rrect_border(self.screen, OUTLINE, log_rect, 8, 1)
 
-        MSG_H = 48; MGAP = 4
-        maxm  = log_h // (MSG_H + MGAP)
+        MSG_H = 48
+        MGAP = 4
+        maxm = log_h // (MSG_H + MGAP)
         visible = self.lobby_chat_log[-maxm:]
 
         old_clip = self.screen.get_clip()
@@ -1453,24 +1485,47 @@ class Arena:
         for j, (sender, text, col) in enumerate(visible):
             is_me = sender == self.username
             bx2 = modal.x + PAD + 5
-            bw2 = modal.w - PAD*2 - 10
-            by2 = log_top + PAD + j*(MSG_H+MGAP)
+            bw2 = modal.w - PAD * 2 - 10
+            by2 = log_top + PAD + j * (MSG_H + MGAP)
             br2 = pygame.Rect(bx2, by2, bw2, MSG_H)
             bg2 = lerp(SURFACE, col, 0.08) if is_me else SURFACE
             rrect(self.screen, bg2, br2, 8)
-            if is_me: rrect_border(self.screen, (*col[:3], 70), br2, 8, 1)
-            pygame.draw.rect(self.screen, col,
-                             (bx2, by2+9, 4, MSG_H-18), border_radius=2)
+            if is_me:
+                rrect_border(self.screen, (*col[:3], 70), br2, 8, 1)
+            pygame.draw.rect(
+                self.screen, col, (bx2, by2 + 9, 4, MSG_H - 18), border_radius=2
+            )
             ns = self.F["chat_name"].render(sender, True, col)
-            self.screen.blit(ns, (bx2+14, by2+5))
-            mc = max(0, (bw2-20)//9)
+            self.screen.blit(ns, (bx2 + 14, by2 + 5))
+            mc = max(0, (bw2 - 20) // 9)
             ms = self.F["chat_msg"].render(text[:mc], True, TEXT_PRI)
-            self.screen.blit(ms, (bx2+14, by2+24))
+            self.screen.blit(ms, (bx2 + 14, by2 + 24))
         self.screen.set_clip(old_clip)
+
+        # Emote buttons
+        emote_label = self.F["xs"].render("EMOTES", True, CHEER_C)
+        self.screen.blit(
+            emote_label, (modal.x + PAD, cheer_y - emote_label.get_height() - 3)
+        )
+        for i, lbl in enumerate(self.cheer_labels):
+            btn_r = self._lobby_cheer_rect(i)
+            col = self.cheer_colors[i]
+            rrect(self.screen, (*col, 48), btn_r, 7)
+            rrect_border(self.screen, col, btn_r, 7, 1)
+            lt = self.F["xs"].render(lbl, True, TEXT_PRI)
+            self.screen.blit(
+                lt,
+                (
+                    btn_r.centerx - lt.get_width() // 2,
+                    btn_r.centery - lt.get_height() // 2,
+                ),
+            )
 
         # Input
         inp_y = modal.bottom - INP_H - PAD
-        self.tf_lobby_chat.rect = pygame.Rect(modal.x+PAD, inp_y, modal.w-PAD*2, INP_H-2)
+        self.tf_lobby_chat.rect = pygame.Rect(
+            modal.x + PAD, inp_y, modal.w - PAD * 2, INP_H - 2
+        )
         self.tf_lobby_chat.draw(self.screen, dt)
 
     def _help_modal_rect(self):
@@ -1532,7 +1587,7 @@ class Arena:
         circle_glow(self.screen, pc, (preview_x, preview_y), 12, 10, 60)
         aacircle(self.screen, pc, (preview_x, preview_y), 12)
         ct = self.F["h3"].render("Current color:", True, TEXT_PRI)
-        self.screen.blit(ct, (preview_x - ct.get_width() // 2-70 , preview_y - 10 ))
+        self.screen.blit(ct, (preview_x - ct.get_width() // 2 - 70, preview_y - 10))
 
         # Color swatches
         for i, col in enumerate(self._color_palette):
@@ -2031,8 +2086,8 @@ class Arena:
             wx = tcx - wt.get_width() // 2 + 6
             wy = 54
             # Eye icon (simple circle)
-            aacircle(self.screen, eye_col, (wx - 10, wy + wt.get_height()//2), 4)
-            aacircle(self.screen, BG,      (wx - 10, wy + wt.get_height()//2), 2)
+            aacircle(self.screen, eye_col, (wx - 10, wy + wt.get_height() // 2), 4)
+            aacircle(self.screen, BG, (wx - 10, wy + wt.get_height() // 2), 2)
             self.screen.blit(wt, (wx, wy))
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
@@ -2242,18 +2297,21 @@ class Arena:
 
     # ── Game over ─────────────────────────────────────────────────────────────
     def _draw_over(self):
-        t  = self._t
+        t = self._t
         dt = self._dt
         gcx = (GRID_W * CELL) // 2
         gcy = WIN_H // 2
-        go     = self.gover or {}
+        go = self.gover or {}
         winner = go.get("winner", "draw")
         scores = go.get("scores", {})
-        stats  = go.get("stats", {})
+        stats = go.get("stats", {})
 
-        if winner == "draw":          wcol, wtxt = ACCENT_BLU, "DRAW!"
-        elif winner == self.username: wcol, wtxt = P0,         "YOU WIN!"
-        else:                         wcol, wtxt = P1,         f"{winner} WINS!"
+        if winner == "draw":
+            wcol, wtxt = ACCENT_BLU, "DRAW!"
+        elif winner == self.username:
+            wcol, wtxt = P0, "YOU WIN!"
+        else:
+            wcol, wtxt = P1, f"{winner} WINS!"
 
         # Backdrop
         ov = pygame.Surface((WIN_W, WIN_H), pygame.SRCALPHA)
@@ -2262,64 +2320,87 @@ class Arena:
 
         # ── Main card ─────────────────────────────────────────────────────────
         cw, ch = 620, 500
-        card = pygame.Rect(gcx - cw//2, gcy - ch//2, cw, ch)
+        card = pygame.Rect(gcx - cw // 2, gcy - ch // 2, cw, ch)
         cs = pygame.Surface((cw, ch), pygame.SRCALPHA)
         cs.fill((5, 6, 12, 254))
         self.screen.blit(cs, card.topleft)
         pulse = 0.5 + 0.5 * math.sin(t * 2.4)
-        glow_behind(self.screen, wcol, card, 12, int(18 + 14*pulse), 14)
-        rrect_border(self.screen, lerp(wcol, TEXT_PRI, pulse*0.3), card, 14, 2)
+        glow_behind(self.screen, wcol, card, 12, int(18 + 14 * pulse), 14)
+        rrect_border(self.screen, lerp(wcol, TEXT_PRI, pulse * 0.3), card, 14, 2)
         pygame.draw.rect(self.screen, wcol, (card.x, card.y, cw, 4), border_radius=14)
 
         # ── Winner title ──────────────────────────────────────────────────────
         wt = self.F["title"].render(wtxt, True, wcol)
-        glow_behind(self.screen, wcol,
-                    pygame.Rect(gcx - wt.get_width()//2 - 14, card.y+14,
-                                wt.get_width()+28, wt.get_height()+6), 8, 18, 26)
-        self.screen.blit(wt, (gcx - wt.get_width()//2, card.y + 16))
-        pygame.draw.line(self.screen, OUTLINE,
-                         (card.x+24, card.y+74), (card.right-24, card.y+74), 1)
+        glow_behind(
+            self.screen,
+            wcol,
+            pygame.Rect(
+                gcx - wt.get_width() // 2 - 14,
+                card.y + 14,
+                wt.get_width() + 28,
+                wt.get_height() + 6,
+            ),
+            8,
+            18,
+            26,
+        )
+        self.screen.blit(wt, (gcx - wt.get_width() // 2, card.y + 16))
+        pygame.draw.line(
+            self.screen,
+            OUTLINE,
+            (card.x + 24, card.y + 74),
+            (card.right - 24, card.y + 74),
+            1,
+        )
 
         # ── Scores row ────────────────────────────────────────────────────────
         snakes_data = (self.gdata or {}).get("snakes", [])
         score_items = list(scores.items())[:2]
         for i, (name, hp) in enumerate(score_items):
-            raw = snakes_data[i].get("color", [[0,220,120],[255,50,90]][i]) \
-                  if i < len(snakes_data) else [[0,220,120],[255,50,90]][i]
-            c   = tuple(raw)
-            col_x = card.x + 28 + i * (cw//2)
-            col_w = cw//2 - 40
-            ys    = card.y + 82
+            raw = (
+                snakes_data[i].get("color", [[0, 220, 120], [255, 50, 90]][i])
+                if i < len(snakes_data)
+                else [[0, 220, 120], [255, 50, 90]][i]
+            )
+            c = tuple(raw)
+            col_x = card.x + 28 + i * (cw // 2)
+            col_w = cw // 2 - 40
+            ys = card.y + 82
 
             nt = self.F["h2"].render(name, True, c)
             self.screen.blit(nt, (col_x, ys))
-            draw_hp_bar(self.screen, col_x, ys+30, col_w, 16, hp, MAX_HEALTH, c)
+            draw_hp_bar(self.screen, col_x, ys + 30, col_w, 16, hp, MAX_HEALTH, c)
             ht = self.F["sm"].render(f"{hp} HP", True, TEXT_SEC)
-            self.screen.blit(ht, (col_x + col_w + 6, ys+28))
+            self.screen.blit(ht, (col_x + col_w + 6, ys + 28))
 
-        pygame.draw.line(self.screen, OUTLINE,
-                         (card.x+24, card.y+148), (card.right-24, card.y+148), 1)
+        pygame.draw.line(
+            self.screen,
+            OUTLINE,
+            (card.x + 24, card.y + 148),
+            (card.right - 24, card.y + 148),
+            1,
+        )
 
         # ── Stats section header ──────────────────────────────────────────────
         sh = self.F["sm"].render("MATCH  STATS", True, TEXT_TER)
-        self.screen.blit(sh, (gcx - sh.get_width()//2, card.y + 155))
+        self.screen.blit(sh, (gcx - sh.get_width() // 2, card.y + 155))
 
         # ── Stats columns ─────────────────────────────────────────────────────
         STAT_DEFS = [
-            ("Pies Collected",  "pies",      "pie"),
-            ("Mutations Used",  "mutations", "mut"),
-            ("Damage Dealt",    "dmg_dealt", "dmg"),
-            ("Max Snake Length","max_len",   "len"),
+            ("Pies Collected", "pies", "pie"),
+            ("Mutations Used", "mutations", "mut"),
+            ("Damage Dealt", "dmg_dealt", "dmg"),
+            ("Max Snake Length", "max_len", "len"),
         ]
         STAT_ICONS = {
             "pie": (255, 180, 40),
-            "mut": (140,  80, 255),
-            "dmg": (255,  60,  80),
-            "len": ( 60, 200, 120),
+            "mut": (140, 80, 255),
+            "dmg": (255, 60, 80),
+            "len": (60, 200, 120),
         }
 
-        n_stats  = len(STAT_DEFS)
-        row_h    = 52
+        n_stats = len(STAT_DEFS)
+        row_h = 52
         stats_y0 = card.y + 178
 
         for ri, (label, key, icon) in enumerate(STAT_DEFS):
@@ -2327,16 +2408,22 @@ class Arena:
 
             # Row background (alternating)
             if ri % 2 == 0:
-                rrect(self.screen, (10, 12, 24),
-                      pygame.Rect(card.x+14, row_y-2, cw-28, row_h-4), 6)
+                rrect(
+                    self.screen,
+                    (10, 12, 24),
+                    pygame.Rect(card.x + 14, row_y - 2, cw - 28, row_h - 4),
+                    6,
+                )
 
             # Icon dot
             ic = STAT_ICONS[icon]
-            aacircle(self.screen, ic, (card.x+30, row_y + row_h//2 - 8), 5)
+            aacircle(self.screen, ic, (card.x + 30, row_y + row_h // 2 - 8), 5)
 
             # Label
             lt = self.F["sm"].render(label, True, TEXT_TER)
-            self.screen.blit(lt, (card.x+44, row_y + row_h//2 - lt.get_height()//2 - 8))
+            self.screen.blit(
+                lt, (card.x + 44, row_y + row_h // 2 - lt.get_height() // 2 - 8)
+            )
 
             # Values per player — one column each, with bar comparison
             p_vals = []
@@ -2345,15 +2432,18 @@ class Arena:
                 p_vals.append(p_stats.get(key, 0))
 
             max_val = max(p_vals) if any(v > 0 for v in p_vals) else 1
-            BAR_W   = 160
-            BAR_H   = 10
-            bar_y   = row_y + row_h//2 + 2
+            BAR_W = 160
+            BAR_H = 10
+            bar_y = row_y + row_h // 2 + 2
 
             for pi, (name, _) in enumerate(score_items):
-                raw  = snakes_data[pi].get("color", [[0,220,120],[255,50,90]][pi]) \
-                       if pi < len(snakes_data) else [[0,220,120],[255,50,90]][pi]
-                pc   = tuple(raw)
-                val  = p_vals[pi]
+                raw = (
+                    snakes_data[pi].get("color", [[0, 220, 120], [255, 50, 90]][pi])
+                    if pi < len(snakes_data)
+                    else [[0, 220, 120], [255, 50, 90]][pi]
+                )
+                pc = tuple(raw)
+                val = p_vals[pi]
 
                 if pi == 0:
                     bx = card.x + 44
@@ -2363,22 +2453,48 @@ class Arena:
                 # Bar (right-aligned for P1, left-aligned for P0)
                 ratio = val / max_val if max_val > 0 else 0
                 bar_fill = max(BAR_H, int(BAR_W * ratio))
-                rrect(self.screen, (20,22,38), pygame.Rect(bx, bar_y, BAR_W, BAR_H), BAR_H//2)
+                rrect(
+                    self.screen,
+                    (20, 22, 38),
+                    pygame.Rect(bx, bar_y, BAR_W, BAR_H),
+                    BAR_H // 2,
+                )
                 if ratio > 0:
                     if pi == 0:
-                        rrect(self.screen, pc, pygame.Rect(bx, bar_y, bar_fill, BAR_H), BAR_H//2)
+                        rrect(
+                            self.screen,
+                            pc,
+                            pygame.Rect(bx, bar_y, bar_fill, BAR_H),
+                            BAR_H // 2,
+                        )
                     else:
-                        rrect(self.screen, pc, pygame.Rect(bx+BAR_W-bar_fill, bar_y, bar_fill, BAR_H), BAR_H//2)
-                rrect_border(self.screen, OUTLINE, pygame.Rect(bx, bar_y, BAR_W, BAR_H), BAR_H//2, 1)
+                        rrect(
+                            self.screen,
+                            pc,
+                            pygame.Rect(bx + BAR_W - bar_fill, bar_y, bar_fill, BAR_H),
+                            BAR_H // 2,
+                        )
+                rrect_border(
+                    self.screen,
+                    OUTLINE,
+                    pygame.Rect(bx, bar_y, BAR_W, BAR_H),
+                    BAR_H // 2,
+                    1,
+                )
 
                 # Winner star on this stat
-                is_leader = (pi==0 and p_vals[0] > p_vals[1]) or (pi==1 and p_vals[1] > p_vals[0])
+                is_leader = (pi == 0 and p_vals[0] > p_vals[1]) or (
+                    pi == 1 and p_vals[1] > p_vals[0]
+                )
                 if is_leader and p_vals[0] != p_vals[1]:
                     star = self.F["xs"].render("*", True, GOLD_C)
                     if pi == 0:
                         self.screen.blit(star, (bx + bar_fill + 4, bar_y - 2))
                     else:
-                        self.screen.blit(star, (bx + BAR_W - bar_fill - star.get_width() - 4, bar_y - 2))
+                        self.screen.blit(
+                            star,
+                            (bx + BAR_W - bar_fill - star.get_width() - 4, bar_y - 2),
+                        )
 
                 # Value label
                 vt = self.F["body_med"].render(str(val), True, pc)
@@ -2387,8 +2503,13 @@ class Arena:
                 else:
                     self.screen.blit(vt, (bx + BAR_W - vt.get_width(), row_y + 2))
 
-        pygame.draw.line(self.screen, OUTLINE,
-                         (card.x+24, card.bottom-80), (card.right-24, card.bottom-80), 1)
+        pygame.draw.line(
+            self.screen,
+            OUTLINE,
+            (card.x + 24, card.bottom - 80),
+            (card.right - 24, card.bottom - 80),
+            1,
+        )
 
         # ── Buttons ───────────────────────────────────────────────────────────
         is_player = self.pid is not None
@@ -2396,16 +2517,18 @@ class Arena:
         if is_player:
             # Players: Rematch + Back to Lobby
             self.btn_rematch.rect = pygame.Rect(gcx - bw - 12, card.bottom - 68, bw, 52)
-            self.btn_lobby.rect   = pygame.Rect(gcx + 12,       card.bottom - 68, bw, 52)
+            self.btn_lobby.rect = pygame.Rect(gcx + 12, card.bottom - 68, bw, 52)
             self.btn_rematch.draw(self.screen, dt)
             self.btn_lobby.draw(self.screen, dt)
             hint = self.F["xs"].render(
                 "Rematch to play again   |   Back to Lobby to queue for a new game",
-                True, TEXT_DIS)
-            self.screen.blit(hint, (gcx - hint.get_width()//2, card.bottom + 16))
+                True,
+                TEXT_DIS,
+            )
+            self.screen.blit(hint, (gcx - hint.get_width() // 2, card.bottom + 16))
         else:
             # Fans and lobby watchers: just Back to Lobby
-            self.btn_lobby.rect = pygame.Rect(gcx - bw//2, card.bottom - 68, bw, 52)
+            self.btn_lobby.rect = pygame.Rect(gcx - bw // 2, card.bottom - 68, bw, 52)
             self.btn_lobby.draw(self.screen, dt)
 
         # Sidebar only when we have a game board visible

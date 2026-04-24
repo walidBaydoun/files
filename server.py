@@ -19,9 +19,9 @@ class ClientHandler:
         self.addr = addr
         self.server: "ArenaServer" = server
         self.username: str | None = None
-        self.role: str = "lobby"   # "lobby" | "player" | "fan"
-        self.player_id: int | None = None   # 0 or 1 if player
-        self.color: list = [0, 220, 120]   # default green
+        self.role: str = "lobby"  # "lobby" | "player" | "fan"
+        self.player_id: int | None = None  # 0 or 1 if player
+        self.color: list = [0, 220, 120]  # default green
         self.stats: dict = {"wins": 0, "losses": 0, "streak": 0}
         self._buf = b""
         self._lock = threading.Lock()
@@ -96,10 +96,10 @@ class ClientHandler:
         elif t == MSG_SET_COLOR:
             col = msg.get("color", [0, 220, 120])
             if isinstance(col, list) and len(col) == 3:
-                self.color = [max(0,min(255,int(c))) for c in col]
+                self.color = [max(0, min(255, int(c))) for c in col]
         elif t == MSG_SHARE_STATS:
             self.stats = {
-                "wins":   int(msg.get("wins",   0)),
+                "wins": int(msg.get("wins", 0)),
                 "losses": int(msg.get("losses", 0)),
                 "streak": int(msg.get("streak", 0)),
             }
@@ -112,7 +112,9 @@ class ClientHandler:
             self.send({"type": MSG_JOIN_ERR, "reason": "Username cannot be empty."})
             return
         if not self.server.register_username(name, self):
-            self.send({"type": MSG_JOIN_ERR, "reason": f"Username '{name}' is already taken."})
+            self.send(
+                {"type": MSG_JOIN_ERR, "reason": f"Username '{name}' is already taken."}
+            )
             return
         self.username = name
         self.role = "lobby"
@@ -187,7 +189,7 @@ class ArenaServer:
         self.game_state: GameState | None = None
         self._game_thread: threading.Thread | None = None
         self._rematch_votes: set = set()
-        self._ready_queue: list[ClientHandler] = []   # ordered — first two get matched
+        self._ready_queue: list[ClientHandler] = []  # ordered — first two get matched
 
     # ── Client registry ────────────────────────────────────────────────────────
     def register_username(self, name: str, client: ClientHandler) -> bool:
@@ -224,13 +226,14 @@ class ArenaServer:
         with self._lock:
             players = [
                 {
-                    "name":   c.username,
-                    "wins":   c.stats.get("wins",   0),
+                    "name": c.username,
+                    "wins": c.stats.get("wins", 0),
                     "losses": c.stats.get("losses", 0),
                     "streak": c.stats.get("streak", 0),
-                    "color":  c.color,
+                    "color": c.color,
                 }
-                for c in self._clients if c.username and c.role == "lobby"
+                for c in self._clients
+                if c.username and c.role == "lobby"
             ]
         self.broadcast({"type": MSG_PLAYER_LIST, "players": players})
 
@@ -263,9 +266,12 @@ class ArenaServer:
         p0.player_id, p1.player_id = 0, 1
         self._rematch_votes.clear()
         self.game_state = GameState([p0.username, p1.username], [p0.color, p1.color])
-        config = {"grid_w": 30, "grid_h": 22,
-                  "usernames": [p0.username, p1.username],
-                  "colors": [p0.color, p1.color]}
+        config = {
+            "grid_w": 30,
+            "grid_h": 22,
+            "usernames": [p0.username, p1.username],
+            "colors": [p0.color, p1.color],
+        }
         p0.send({"type": MSG_GAME_START, "your_id": 0, "config": config})
         p1.send({"type": MSG_GAME_START, "your_id": 1, "config": config})
         print(f"[server] Game starting: {p0.username} vs {p1.username}")
@@ -331,7 +337,11 @@ class ArenaServer:
         """Add or remove a client from the ready queue and broadcast status."""
         with self._lock:
             if ready:
-                if client not in self._ready_queue and client.role == "lobby" and client.username:
+                if (
+                    client not in self._ready_queue
+                    and client.role == "lobby"
+                    and client.username
+                ):
                     self._ready_queue.append(client)
             else:
                 if client in self._ready_queue:
@@ -356,6 +366,14 @@ class ArenaServer:
             gs = self.game_state
             if gs and len(self._rematch_votes) >= 2:
                 if all(n in self._rematch_votes for n in gs.usernames):
+                    # Reset both players' roles to "lobby" and add to ready queue
+                    with self._lock:
+                        for c in self._clients:
+                            if c.username in gs.usernames:
+                                c.role = "lobby"
+                                c.player_id = None
+                                if c not in self._ready_queue:
+                                    self._ready_queue.append(c)
                     self.try_start_game()
 
     # ── Main server loop ───────────────────────────────────────────────────────
