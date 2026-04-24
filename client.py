@@ -1411,10 +1411,9 @@ class Arena:
     def _lobby_cheer_rect(self, i):
         modal = self._lobby_chat_modal_rect()
         n = len(self.cheer_labels)
-        PAD = 14
-        bw = (modal.w - PAD * 2 - (n - 1) * 6) // n
-        y = modal.bottom - 10 - 44 - 8 - 32
-        return pygame.Rect(modal.x + PAD + i * (bw + 6), y, bw, 32)
+        PAD = 14; bw = (modal.w - PAD*2 - (n-1)*6) // n
+        return pygame.Rect(modal.x + PAD + i*(bw+6),
+                           modal.bottom - 64, bw, 32)
 
     def _draw_lobby_chat_modal(self):
         t = self._t
@@ -1468,10 +1467,9 @@ class Arena:
         CHEER_H = 32
         CHEER_GAP = 8
         log_top = modal.y + 58
-        cheer_y = modal.bottom - PAD - INP_H - CHEER_GAP - CHEER_H
-        log_bot = cheer_y - PAD
-        log_h = log_bot - log_top
-        log_rect = pygame.Rect(modal.x + PAD, log_top, modal.w - PAD * 2, log_h)
+        log_bot = modal.bottom - INP_H - PAD*2
+        log_h   = log_bot - log_top
+        log_rect = pygame.Rect(modal.x+PAD, log_top, modal.w-PAD*2, log_h)
         rrect(self.screen, (4, 5, 12), log_rect, 8)
         rrect_border(self.screen, OUTLINE, log_rect, 8, 1)
 
@@ -1501,25 +1499,6 @@ class Arena:
             ms = self.F["chat_msg"].render(text[:mc], True, TEXT_PRI)
             self.screen.blit(ms, (bx2 + 14, by2 + 24))
         self.screen.set_clip(old_clip)
-
-        # Emote buttons
-        emote_label = self.F["xs"].render("EMOTES", True, CHEER_C)
-        self.screen.blit(
-            emote_label, (modal.x + PAD, cheer_y - emote_label.get_height() - 3)
-        )
-        for i, lbl in enumerate(self.cheer_labels):
-            btn_r = self._lobby_cheer_rect(i)
-            col = self.cheer_colors[i]
-            rrect(self.screen, (*col, 48), btn_r, 7)
-            rrect_border(self.screen, col, btn_r, 7, 1)
-            lt = self.F["xs"].render(lbl, True, TEXT_PRI)
-            self.screen.blit(
-                lt,
-                (
-                    btn_r.centerx - lt.get_width() // 2,
-                    btn_r.centery - lt.get_height() // 2,
-                ),
-            )
 
         # Input
         inp_y = modal.bottom - INP_H - PAD
