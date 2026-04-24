@@ -8,9 +8,9 @@ Online two-player snake battle game built with Python + Pygame.
 pip install pygame
 ```
 
-Python 3.10+ recommended (uses `X | Y` type union syntax).
+Python 3.10+ recommended .
 
-## Running
+## How To Run
 
 ### 1. Start the server
 
@@ -40,7 +40,7 @@ Each client opens a GUI where you enter:
 | `/pm username message` | Private message |
 
 ### Game Rules
-- Collect **pies** to gain health 🥧 (golden +15, normal +8, rotten -10)
+- Collect **pies** to gain health and different mutations
 - Avoid **walls**, **obstacles**, and the **other snake** (causes health loss)
 - The player with more health when the timer runs out **wins**
 - A player reaching **0 HP** loses immediately
@@ -56,7 +56,7 @@ Each client opens a GUI where you enter:
 - [x] Pie collection (3 types with different effects)
 - [x] Static obstacles (rocks and spikes)
 - [x] Health scoring system
-- [x] Game timer (120 seconds)
+- [x] Game timer (180 seconds)
 - [x] Winner announcement
 - [x] Game state broadcast to all clients
 
@@ -66,6 +66,7 @@ Each client opens a GUI where you enter:
 - [x] **Cheer system** – fans send emoji cheers displayed in-game
 - [x] **Rematch** – both players can vote to play again
 - [x] **Snake customization** – animated eyes facing direction of travel
+- [x] **Music** – Ingame music which can be muted
 
 ## Architecture
 
@@ -82,20 +83,8 @@ All communication uses plain TCP sockets with one UTF-8 JSON message per line.
 The server runs the game at 10 ticks/second and broadcasts state to players and fans.
 Clients only send **direction inputs** and render the received state (thin client).
 
-### Message Flow
-
-```
-Client                        Server
-  |  JOIN {username}   →        |
-  |  ←  JOIN_OK / ERR           |
-  |  ←  PLAYER_LIST             |
-  |  ←  GAME_START              |
-  |  INPUT {direction} →        |
-  |  ←  GAME_STATE (10/s)       |
-  |  ←  GAME_OVER               |
-  |  CHAT {text}       →        |
-  |  ←  CHAT_RECV               |
-  |  WATCH             →        |  (fan)
-  |  CHEER {emoji}     →        |  (fan)
-  |  ←  CHEER_RECV              |
-```
+## 🛠️ Tech Stack
+* **Frontend:** Pygame library for graphics and event handling
+* **Backend:** Python with socket library for networking and json library for message serialization
+* **Game Logic:** Python with protocol file for message type definitions and game constants
+* **Dependencies:** socket, threading, json, and pygame libraries
