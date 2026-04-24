@@ -8,6 +8,7 @@ import socket
 import threading
 import time
 import traceback
+import json
 
 from protocol import *
 from game import GameState, TICK_RATE
@@ -30,7 +31,7 @@ class ClientHandler:
     def send(self, msg: dict):
         try:
             with self._lock:
-                self.conn.sendall(encode(msg))
+                self.conn.sendall((json.dumps(msg) + "\n").encode("utf-8"))
         except Exception:
             self.server.remove_client(self)
 
@@ -66,7 +67,7 @@ class ClientHandler:
             if line is None:
                 break
             try:
-                msg = decode(line + b"\n")
+                msg = json.loads(line.decode("utf-8"))
             except Exception:
                 continue
             self._dispatch(msg)

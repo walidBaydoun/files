@@ -2,11 +2,11 @@
 Pithon Arena  |  Professional Client
 """
 
-import sys, socket, threading, queue, time, math, random
+import sys, socket, threading, queue, time, math, random, json
 import pygame, pygame.gfxdraw
 from protocol import *
 
-# ── Constants ──────────────────────────────────────────────────────────────────
+# Constants
 CELL = 26
 SIDEBAR = 340
 TOP_H = 84
@@ -18,7 +18,7 @@ FPS = 60
 GCX = (GRID_W * CELL) // 2
 GCY = TOP_H + (GRID_H * CELL) // 2
 
-# ── Design tokens ──────────────────────────────────────────────────────────────
+# Design tokens
 BG = (5, 6, 12)
 SURFACE = (9, 11, 20)
 SURFACE2 = (13, 16, 28)
@@ -82,12 +82,13 @@ FONT_BOLD = "/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf"
 FONT_MONO = None  # will use system monospace
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-def lerp(a, b, t):
+# Helper Functions for aesthetic and UI elements
+#  Linear interpolation between two colors
+def lerp(a, b, t): 
     t = max(0.0, min(1.0, t))
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
-
+# Aninmation smoothing functions
 def easeout3(t):
     return 1 - (1 - min(1.0, t)) ** 3
 
@@ -98,7 +99,6 @@ def easeout5(t):
 
 def easein2(t):
     return min(1.0, t) ** 2
-
 
 def spring(t):
     return 1 - math.exp(-12 * t) * math.cos(8 * t) if t < 1 else 1
@@ -163,7 +163,7 @@ def circle_glow(surf, col, pos, radius, spread=20, alpha=50):
     surf.blit(g, (int(pos[0]) - total, int(pos[1]) - total))
 
 
-# ── Font system ────────────────────────────────────────────────────────────────
+# Font system
 def load_fonts():
     import os
 
@@ -213,7 +213,7 @@ def load_fonts():
     }
 
 
-# ── Tweening ───────────────────────────────────────────────────────────────────
+# Tweening class for smooth animations
 class Tween:
     def __init__(self, start=0.0, end=1.0, duration=0.3, ease=easeout3, delay=0.0):
         self.start = start
@@ -243,7 +243,7 @@ class Tween:
         self._t = 0.0
 
 
-# ── Particle system ────────────────────────────────────────────────────────────
+# Particle system for explosions, cheers, and other effects
 class Particle:
     __slots__ = ["x", "y", "vx", "vy", "col", "life", "decay", "sz", "grav"]
 
@@ -288,7 +288,7 @@ def confetti_burst(particles, cx, cy, n=80):
         emit(particles, x, y, random.choice(colors), n=1, spd=(2, 8), sz=(3, 9))
 
 
-# ── HP bar component ───────────────────────────────────────────────────────────
+# HP bar component with dynamic color, shine, and low-health glow
 def draw_hp_bar(surf, x, y, w, h, val, mx, accent=None):
     ratio = max(0.0, min(1.0, val / mx))
     # Track
@@ -308,7 +308,7 @@ def draw_hp_bar(surf, x, y, w, h, val, mx, accent=None):
     rrect_border(surf, OUTLINE, pygame.Rect(x, y, w, h), h // 2, 1)
 
 
-# ── Network ────────────────────────────────────────────────────────────────────
+# Network 
 class NetThread(threading.Thread):
     def __init__(self, host, port, q):
         super().__init__(daemon=True)
@@ -342,7 +342,7 @@ class NetThread(threading.Thread):
             while b"\n" in self._buf:
                 line, self._buf = self._buf.split(b"\n", 1)
                 try:
-                    self.q.put(decode(line + b"\n"))
+                    self.q.put(json.loads(line.decode("utf-8")))
                 except:
                     pass
 
@@ -352,7 +352,7 @@ class NetThread(threading.Thread):
             if m is None:
                 break
             try:
-                self._sock.sendall(encode(m))
+                self._sock.sendall((json.dumps(m) + "\n").encode("utf-8"))
             except:
                 break
 
@@ -361,7 +361,7 @@ class NetThread(threading.Thread):
             self._sq.put(m)
 
 
-# ── Input field ────────────────────────────────────────────────────────────────
+# Input field
 class TextField:
     def __init__(self, rect, F, placeholder="", maxlen=40):
         self.rect = pygame.Rect(rect)
@@ -430,7 +430,7 @@ class TextField:
                 pygame.draw.line(surf, ACCENT_BLU, (cx2, cy2 - 10), (cx2, cy2 + 10), 2)
 
 
-# ── Button ─────────────────────────────────────────────────────────────────────
+# Button
 class Button:
     def __init__(self, rect, text, F, variant="primary"):
         self.rect = pygame.Rect(rect)
@@ -497,7 +497,7 @@ class Button:
         )
 
 
-# ── Scanlines (subtle CRT effect) ─────────────────────────────────────────────
+# Scanlines (subtle CRT effect)
 _SL = None
 
 
@@ -511,7 +511,7 @@ def scanlines(surf):
     surf.blit(_SL, (0, 0))
 
 
-# ── Main client ────────────────────────────────────────────────────────────────
+# Main client with pygame
 class Arena:
     def __init__(self):
         pygame.init()
@@ -676,7 +676,7 @@ class Arena:
             [255, 100, 100],  # salmon
         ]
 
-    # ── Loop ──────────────────────────────────────────────────────────────────
+    # Loop
     def run(self):
         while True:
             self._dt = self.clock.tick(FPS) / 1000.0
@@ -702,7 +702,7 @@ class Arena:
             self._draw()
             pygame.display.flip()
 
-    # ── Messages ──────────────────────────────────────────────────────────────
+    # Messages
     def _on(self, msg):
         t = msg.get("type")
         if t == "_ERR":
@@ -815,7 +815,7 @@ class Arena:
     def _fade_in(self):
         self._screen_alpha = Tween(0, 1, 0.35, easeout3)
 
-    # ── Events ────────────────────────────────────────────────────────────────
+    # Events and input handling
     def _events(self):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
@@ -1036,7 +1036,7 @@ class Arena:
         self._pre_over_state = S_LOBBY
         self._fade_in()
 
-    # ── Draw ──────────────────────────────────────────────────────────────────
+    # Drawing
     def _draw(self):
         dt = self._dt
         self.screen.fill(BG)
@@ -1080,7 +1080,7 @@ class Arena:
             ov.set_alpha(int(255 * (1 - alpha)))
             self.screen.blit(ov, (0, 0))
 
-    # ── Connect screen ─────────────────────────────────────────────────────────
+    # Connect screen
     def _draw_connect(self):
         t = self._t
         cx = WIN_W // 2
@@ -1174,7 +1174,7 @@ class Arena:
         )
         self.screen.blit(hint, (cx - hint.get_width() // 2, WIN_H - 20))
 
-    # ── Lobby ─────────────────────────────────────────────────────────────────
+    # Lobby screen
     def _draw_lobby(self):
         t = self._t
         cx = WIN_W // 2
@@ -1737,7 +1737,7 @@ class Arena:
             hint, (modal.centerx - hint.get_width() // 2, modal.bottom - 22)
         )
 
-    # ── Grid / game world ─────────────────────────────────────────────────────
+    # Grid / game world
     def _draw_grid(self, surf, ox, oy):
         gd = self.gdata
         for x in range(GRID_W):
@@ -1966,7 +1966,7 @@ class Arena:
             aacircle(surf, BG, (ex, ey), 3)
             aacircle(surf, glow, (ex, ey), 2)
 
-    # ── Top bar ───────────────────────────────────────────────────────────────
+    # Top bar
     def _draw_topbar(self):
         t = self._t
         tb = pygame.Surface((GRID_W * CELL, TOP_H), pygame.SRCALPHA)
@@ -2193,7 +2193,7 @@ class Arena:
         bw = (sw - pad * 2 - (n - 1) * 4) // n
         return pygame.Rect(sx + pad + i * (bw + 4), y, bw, h)
 
-    # ── Countdown ─────────────────────────────────────────────────────────────
+    # Countdown animation before game starts
     def _draw_countdown(self):
         n = self.countdown
         phase = min(1.0, self._t - self._cd_t)
@@ -2274,7 +2274,7 @@ class Arena:
                 self.screen, (*c, la2), (min(lx1, lx2), gcy), (max(lx1, lx2), gcy), 2
             )
 
-    # ── Game over ─────────────────────────────────────────────────────────────
+    # Game over screen
     def _draw_over(self):
         t = self._t
         dt = self._dt
@@ -2297,7 +2297,7 @@ class Arena:
         ov.fill((3, 4, 9, 220))
         self.screen.blit(ov, (0, 0))
 
-        # ── Main card ─────────────────────────────────────────────────────────
+        # Main card 
         cw, ch = 620, 500
         card = pygame.Rect(gcx - cw // 2, gcy - ch // 2, cw, ch)
         cs = pygame.Surface((cw, ch), pygame.SRCALPHA)
@@ -2308,7 +2308,7 @@ class Arena:
         rrect_border(self.screen, lerp(wcol, TEXT_PRI, pulse * 0.3), card, 14, 2)
         pygame.draw.rect(self.screen, wcol, (card.x, card.y, cw, 4), border_radius=14)
 
-        # ── Winner title ──────────────────────────────────────────────────────
+        # Winner title 
         wt = self.F["title"].render(wtxt, True, wcol)
         glow_behind(
             self.screen,
@@ -2332,7 +2332,7 @@ class Arena:
             1,
         )
 
-        # ── Scores row ────────────────────────────────────────────────────────
+        # Scores row
         snakes_data = (self.gdata or {}).get("snakes", [])
         score_items = list(scores.items())[:2]
         for i, (name, hp) in enumerate(score_items):
@@ -2360,11 +2360,11 @@ class Arena:
             1,
         )
 
-        # ── Stats section header ──────────────────────────────────────────────
+        # Stats section header
         sh = self.F["sm"].render("MATCH  STATS", True, TEXT_TER)
         self.screen.blit(sh, (gcx - sh.get_width() // 2, card.y + 155))
 
-        # ── Stats columns ─────────────────────────────────────────────────────
+        # Stats columns
         STAT_DEFS = [
             ("Pies Collected", "pies", "pie"),
             ("Mutations Used", "mutations", "mut"),
@@ -2490,7 +2490,7 @@ class Arena:
             1,
         )
 
-        # ── Buttons ───────────────────────────────────────────────────────────
+        # Buttons
         is_player = self.pid is not None
         bw = 220
         if is_player:

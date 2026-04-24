@@ -1,9 +1,7 @@
 """
-Πthon Arena - Shared Protocol Constants
-All message types and game constants shared between client and server.
+Πthon Arena - Shared Constants
+Message types and game constants shared between client and server.
 """
-
-import json
 
 # ── Message Types ──────────────────────────────────────────────────────────────
 # Client → Server
@@ -62,9 +60,3 @@ NUM_OBSTACLES   = 8
 # Snake colors for player 0 and player 1
 SNAKE_COLORS    = ["#00FF7F", "#FF6347"]
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-def encode(msg: dict) -> bytes:
-    return (json.dumps(msg) + "\n").encode("utf-8")
-
-def decode(line: bytes) -> dict:
-    return json.loads(line.decode("utf-8").strip())
