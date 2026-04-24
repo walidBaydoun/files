@@ -40,6 +40,12 @@ class Snake:
         self._slow_skip   = False   # alternates each tick while slowed
         self.active_mutation = None  # "hotsauce"|"whipped"|"blueberry"|None
 
+        # ── Stats ──────────────────────────────────────────────────────────────
+        self.stat_pies      = 0   # pies collected
+        self.stat_mutations = 0   # mutations activated
+        self.stat_dmg_dealt = 0   # damage dealt to opponent
+        self.stat_max_len   = 1   # longest body length
+
     def set_direction(self, new_dir: str):
         opposites = {"UP":"DOWN","DOWN":"UP","LEFT":"RIGHT","RIGHT":"LEFT"}
         if new_dir != opposites.get(self.direction):
@@ -233,6 +239,8 @@ class GameState:
             if head in fire_map and fire_map[head] != i:
                 landed = snake.apply_damage(FIRE_DAMAGE)
                 if landed:
+                    # Credit damage to the fire owner
+                    self.snakes[fire_map[head]].stat_dmg_dealt += FIRE_DAMAGE
                     events.append({"kind":"fire_damage","player":i,"damage":FIRE_DAMAGE})
 
             # Obstacle collision
@@ -242,7 +250,6 @@ class GameState:
                     events.append({"kind":"collision","player":i,"type":"obstacle"})
                 else:
                     events.append({"kind":"shield_block","player":i,"type":"obstacle"})
-                # Push head back
                 snake.body[0] = snake.body[1] if len(snake.body)>1 else head
 
             # Self collision
@@ -255,6 +262,7 @@ class GameState:
             if other.alive and head in other.body:
                 landed = snake.apply_damage(25)
                 if landed:
+                    other.stat_dmg_dealt += 25
                     events.append({"kind":"collision","player":i,"type":"snake"})
                 else:
                     events.append({"kind":"shield_block","player":i,"type":"snake"})
@@ -267,6 +275,8 @@ class GameState:
                 self.pies.remove(pie)
                 self._spawn_pie()
                 snake.grow += 1
+                snake.stat_pies += 1
+                snake.stat_max_len = max(snake.stat_max_len, len(snake.body))
 
             # Death check
             if snake.health <= 0:
@@ -280,6 +290,7 @@ class GameState:
 
     def _apply_mutation(self, snake: Snake, kind: str, events: list, pid: int):
         snake.active_mutation = kind
+        snake.stat_mutations += 1
         if kind == "hotsauce":
             snake.fire_ticks  = FIRE_DURATION
             snake.fire_active = True
@@ -291,6 +302,17 @@ class GameState:
         elif kind == "blueberry":
             snake.shield = True
             events.append({"kind":"mutation","player":pid,"mutation":"blueberry"})
+
+    def stats_dict(self):
+        result = {}
+        for sn in self.snakes:
+            result[self.usernames[sn.player_id]] = {
+                "pies":      sn.stat_pies,
+                "mutations": sn.stat_mutations,
+                "dmg_dealt": sn.stat_dmg_dealt,
+                "max_len":   sn.stat_max_len,
+            }
+        return result
 
     def _end_by_time(self):
         self.running = False

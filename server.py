@@ -222,6 +222,8 @@ class ArenaServer:
             msg = self.game_state.to_dict()
             with self._lock:
                 targets = [c for c in self._clients if c.role in ("player", "fan")]
+                fan_count = sum(1 for c in self._clients if c.role == "fan")
+            msg["fan_count"] = fan_count
             for c in targets:
                 c.send(msg)
 
@@ -294,6 +296,7 @@ class ArenaServer:
                 gs.usernames[0]: gs.snakes[0].health,
                 gs.usernames[1]: gs.snakes[1].health,
             },
+            "stats": gs.stats_dict(),
         }
         self.broadcast(over_msg)
         print(f"[server] Game over. Winner: {gs.winner}")
