@@ -833,8 +833,8 @@ class Button:
         self.text = text
         self.F = F
         self.variant = variant
-        # Animate hover state
-        self._hover_t = Tween(0, 1, 0.15, easeout3)
+        # Animate hover state (start at 0, end at 0)
+        self._hover_t = Tween(0, 0, 0.15, easeout3)
         self._press_t = 0  # Time of last button press
         self._hovered = False  # Is mouse currently over button?
 
@@ -1563,7 +1563,7 @@ class Arena:
             if isinstance(attr, Button):
                 # Reset button to unhovered state without animation
                 attr._hovered = False
-                attr._hover_t = Tween(1, 0, 0.15, easeout3)
+                attr._hover_t = Tween(0, 0, 0.15, easeout3)
 
     def _share_stats(self):
         """
