@@ -71,20 +71,65 @@ Each client opens a GUI where you enter:
 ## Architecture
 
 ```
+
+  Server                                Client
+  │   ←  {"type":"JOIN","username":"Alice"}   │
+  │   {"type":"JOIN_OK","username":"Alice"} → │
+  │   {"type":"PLAYER_LIST",...}           →  │
+
+  │   ←  {"type":"READY"}                   │
+  │   {"type":"READY_STATUS",
+  │        "ready":["Alice"],
+  │        "count":1
+  │     } →                                 │
+
+  │   (another player joins & ready)        │
+  │   {"type":"GAME_START",
+  │        "your_id":0,
+  │        "config":{...}
+  │     } →                                 │
+
+  │   ←  {"type":"INPUT","direction":"RIGHT"} │
+  │   ←  {"type":"INPUT","direction":"UP"}    │
+
+  │   {"type":"GAME_STATE",...} →   (≈10/sec) │
+
+  │   {"type":"GAME_OVER",
+  │        "winner":"Alice",
+  │        "scores":{...},
+  │        "stats":{...}
+  │     } →                                  │
+  # Spectator
+Server                                Client
+  │   ←  {"type":"WATCH"}             │
+  │   {"type":"WATCH_OK"} →           │
+  │   {"type":"GAME_STATE",...} →     │
+
+  # Chat / Cheer
+Server                                Client
+  │   ←  {"type":"CHAT","text":"hi"}  │
+  │   {"type":"CHAT_RECV",...} →      │
+
+  │   ←  {"type":"CHEER","emoji":"🔥"} │
+  │   {"type":"CHEER_RECV",...} →      │
 server.py        – TCP server, manages clients & game loop
   └── game.py    – Pure game logic (GameState, Snake)
   
 client.py        – Pygame GUI + network thread
   
 protocol.py      – Shared message types & constants
+server.py        – TCP server, manages clients & game loop
+  └── game.py    – Pure game logic (GameState, Snake)
+  
 ```
 
-All communication uses plain TCP sockets with one UTF-8 JSON message per line.
-The server runs the game at 10 ticks/second and broadcasts state to players and fans.
-Clients only send **direction inputs** and render the received state (thin client).
+All communication uses plain TCP sockets with newline-delimited UTF-8 JSON messages.
+The server runs the game loop at ~10 ticks per second and broadcasts the game state to both players and spectators.
+Clients act as rendering endpoints for gameplay (sending only input commands like direction), but also handle additional interactions such as lobby control, chat, and reactions.
 
 ## 🛠️ Tech Stack
 * **Frontend:** Pygame library for graphics and event handling
 * **Backend:** Python with socket library for networking and json library for message serialization
 * **Game Logic:** Python with protocol file for message type definitions and game constants
 * **Dependencies:** socket, threading, json, and pygame libraries
+
