@@ -3183,9 +3183,9 @@ class Arena:
             aacircle(self.screen, ic, (card.x + 30, row_y + row_h // 2 - 8), 5)
 
             # Label
-            lt = self.F["sm"].render(label, True, TEXT_TER)
+            lt = self.F["body_med"].render(label, True, TEXT_PRI)
             self.screen.blit(
-                lt, (card.x + 44, row_y + row_h // 2 - lt.get_height() // 2 - 8)
+                lt, (card.x + 260, row_y + row_h // 2 - lt.get_height() // 2 - 8)
             )
 
             # Values per player — one column each, with bar comparison
