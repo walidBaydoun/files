@@ -154,7 +154,16 @@ class ClientHandler:
             target = self.server.get_client_by_name(to)
             if target:
                 target.send(payload)
-            self.send(payload)  # echo to self
+                self.send(payload)  # echo to self
+            else:
+                # Target user not found - send error message to sender
+                error_payload = {
+                    "type": MSG_CHAT_RECV,
+                    "from": "Server",
+                    "text": f"User '{to}' not found.",
+                    "private": True,
+                }
+                self.send(error_payload)
         else:
             payload["private"] = False
             self.server.broadcast(payload)

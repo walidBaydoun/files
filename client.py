@@ -1368,10 +1368,15 @@ class Arena:
             tx = msg.get("text", "")  # Message text
             prv = msg.get("private", False)  # Is it a private message?
             # Assign color to player if first time seeing them
-            if s not in self._ucols:
+            if s == "Server":
+                color = TEXT_SEC  # Special color for server messages
+            elif s not in self._ucols:
                 self._ucols[s] = CHAT_PALETTE[len(self._ucols) % len(CHAT_PALETTE)]
+                color = self._ucols[s]
+            else:
+                color = self._ucols[s]
             # Format entry with private message indicator if needed
-            entry = (s, ("[PM] " if prv else "") + tx, self._ucols[s])
+            entry = (s, ("[PM] " if prv else "") + tx, color)
             # Add to main chat log
             self.chat_log.append(entry)
             if len(self.chat_log) > 120:
@@ -1583,12 +1588,19 @@ class Arena:
     def _send_lobby_chat(self):
         """
         Send a chat message during lobby screen.
-        Message is broadcast to all connected players.
+        Supports /pm username message for private messages.
         """
         txt = self.tf_lobby_chat.text.strip()
         if txt and self.net:
-            # Send as broadcast message (to=None means everyone)
-            self.net.send({"type": MSG_CHAT, "to": None, "text": txt})
+            if txt.startswith("/pm "):
+                # Parse private message format
+                p = txt[4:].split(" ", 1)  # Split into [username, message]
+                if len(p) == 2:
+                    # Send private message to specific player
+                    self.net.send({"type": MSG_CHAT, "to": p[0], "text": p[1]})
+            else:
+                # Send as broadcast message (to=None means everyone)
+                self.net.send({"type": MSG_CHAT, "to": None, "text": txt})
         # Clear input field
         self.tf_lobby_chat.text = ""
 
@@ -2074,8 +2086,14 @@ class Arena:
         modal = self._lobby_chat_modal_rect()
         n = len(self.cheer_labels)
         PAD = 14
+        CHEER_GAP = 8
+        INP_H = 44
+        inp_y = (
+            modal.bottom - INP_H - 32 - CHEER_GAP - PAD
+        )  # Same calculation as in draw method
+        cheer_y = inp_y + INP_H + CHEER_GAP
         bw = (modal.w - PAD * 2 - (n - 1) * 6) // n
-        return pygame.Rect(modal.x + PAD + i * (bw + 6), modal.bottom - 64, bw, 32)
+        return pygame.Rect(modal.x + PAD + i * (bw + 6), cheer_y, bw, 32)
 
     def _draw_lobby_chat_modal(self):
         """
@@ -2168,11 +2186,30 @@ class Arena:
         self.screen.set_clip(old_clip)
 
         # Input
-        inp_y = modal.bottom - INP_H - PAD
+        CHEER_H = 32
+        CHEER_GAP = 8
+        inp_y = modal.bottom - INP_H - CHEER_H - CHEER_GAP - PAD
         self.tf_lobby_chat.rect = pygame.Rect(
             modal.x + PAD, inp_y, modal.w - PAD * 2, INP_H - 2
         )
         self.tf_lobby_chat.draw(self.screen, dt)
+
+        # Cheer buttons
+        for i, lbl in enumerate(self.cheer_labels):
+            br = self._lobby_cheer_rect(i)
+            col = self.cheer_colors[i]
+            # Button background
+            rrect(self.screen, lerp(SURFACE, col, 0.1), br, 6)
+            rrect_border(self.screen, lerp(col, OUTLINE, 0.3), br, 6, 1)
+            # Button text
+            bt = self.F["xs"].render(lbl, True, TEXT_PRI)
+            self.screen.blit(
+                bt,
+                (
+                    br.centerx - bt.get_width() // 2,
+                    br.centery - bt.get_height() // 2,
+                ),
+            )
 
     def _help_modal_rect(self):
         """Helper: Calculate the screen position and size of the help modal."""
@@ -2822,7 +2859,7 @@ class Arena:
             eye_col = CHEER_C
             wt = self.F["body_med"].render(f"{fan_count} watching", True, eye_col)
             # Anchor to the right edge of the game grid
-            wx = GRID_W * CELL - wt.get_width() 
+            wx = GRID_W * CELL - wt.get_width()
             wy = TOP_H // 2 - wt.get_height() // 2 - 20
             # Eye icon dot
             aacircle(self.screen, eye_col, (wx - 10, wy + wt.get_height() // 2), 4)
