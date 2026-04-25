@@ -630,7 +630,7 @@ class NetThread(threading.Thread):
         """
         try:
             # Create and connect socket
-            self._sock = socket.socket()
+            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._sock.connect((self.host, self.port))
             self.ok = True  # Mark connection as successful
 
@@ -2816,14 +2816,15 @@ class Arena:
         sl = self.F["xs"].render("SEC", True, TEXT_TER)
         self.screen.blit(sl, (tcx - sl.get_width() // 2, 66))
 
-        # Spectator count
+        # Spectator count — right side of topbar, above the sidebar divider
         fan_count = gd.get("fan_count", 0)
         if fan_count > 0:
             eye_col = CHEER_C
-            wt = self.F["xs"].render(f"{fan_count} watching", True, eye_col)
-            wx = tcx - wt.get_width() // 2 + 6
-            wy = 54
-            # Eye icon (simple circle)
+            wt = self.F["body_med"].render(f"{fan_count} watching", True, eye_col)
+            # Anchor to the right edge of the game grid
+            wx = GRID_W * CELL - wt.get_width() 
+            wy = TOP_H // 2 - wt.get_height() // 2 - 20
+            # Eye icon dot
             aacircle(self.screen, eye_col, (wx - 10, wy + wt.get_height() // 2), 4)
             aacircle(self.screen, BG, (wx - 10, wy + wt.get_height() // 2), 2)
             self.screen.blit(wt, (wx, wy))
